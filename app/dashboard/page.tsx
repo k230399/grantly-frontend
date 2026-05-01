@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import Footer from "../components/Footer";
 import {
   FileText,
@@ -247,8 +248,13 @@ export default function DashboardPage() {
 
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-sm">G</span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Image
+                src="/grantly-logo.png"
+                width={32}
+                height={32}
+                alt="Grantly Logo"
+              />
             </div>
             <span className="text-lg font-semibold text-gray-900">Grantly</span>
           </div>
