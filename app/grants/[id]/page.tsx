@@ -6,10 +6,11 @@
 // No login required. Shows full details for a single open, published grant round.
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import Footer from "../../components/Footer";
+import { useToast } from "@/contexts/ToastContext";
 import {
   ArrowLeft,
   Award,
@@ -97,7 +98,12 @@ function daysUntil(iso: string | null): string | null {
 export default function GrantDetailPage() {
   // useParams gives us the route segment — [id] maps to the grant round's UUID
   const params = useParams();
+  const router = useRouter();
+  const { showToast } = useToast();
   const id = params.id as string;
+
+  // true while the Apply button has fired POST /applications and is awaiting a redirect
+  const [starting, setStarting] = useState(false);
 
   // The full grant round data loaded from the API.
   // null until the fetch completes successfully.
@@ -170,6 +176,76 @@ export default function GrantDetailPage() {
 
     fetchRound();
   }, [id, isAdmin]); // re-runs if the ID changes or once isAdmin is resolved
+
+  // Click handler for the "Apply Now" CTA. Creates a draft application via the
+  // API and navigates the user into the application form. If the round disallows
+  // duplicates and the applicant already has an application here, we route them
+  // to that existing one instead of showing a dead-end error.
+  async function handleApply() {
+    if (starting) return;
+    const token = localStorage.getItem("grantly_token");
+
+    // Unauthenticated visitors can browse but not apply — bounce them to /login
+    // and pass the current path so they return here after sign-in.
+    if (!token) {
+      router.push(`/login?next=/grants/${id}`);
+      return;
+    }
+
+    setStarting(true);
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+    try {
+      // POST a minimal draft. The backend's create validation rejects empty
+      // strings for required text fields, so we send distinctive placeholder
+      // strings that the form clears on hydrate (see DRAFT_NAME_PLACEHOLDER /
+      // DRAFT_DESCRIPTION_PLACEHOLDER in /apply/[id]/page.tsx). The applicant
+      // sees empty inputs and the submit endpoint re-validates completeness.
+      const res = await fetch(`${base}/api/v1/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          grant_round_id: id,
+          project_name: "Untitled application",
+          project_description: "Draft — please update before submitting.",
+          funding_requested: 0,
+          total_project_budget: 0,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        const newId = (data.data ?? data).id;
+        router.push(`/apply/${newId}`);
+        return;
+      }
+
+      // The applicant already has an application for this round — find and
+      // route to the most recent draft, or surface a friendly message if none.
+      if (data.error?.code === "duplicate_application") {
+        const listRes = await fetch(
+          `${base}/api/v1/applications?grant_round_id=${id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const list = await listRes.json();
+        const existing = (list.data ?? []) as { id: string; status: string }[];
+        const draft = existing.find((a) => a.status === "draft") ?? existing[0];
+        if (draft) {
+          router.push(`/apply/${draft.id}`);
+          return;
+        }
+        showToast("You already have an application for this round.", "error");
+        setStarting(false);
+        return;
+      }
+
+      showToast(data.error?.message ?? "Could not start application.", "error");
+      setStarting(false);
+    } catch {
+      showToast("Could not reach the server. Please try again.", "error");
+      setStarting(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -405,15 +481,27 @@ export default function GrantDetailPage() {
                       : "This grant round is no longer accepting applications."}
                   </p>
 
-                  {/* Condition: show Apply Now button when open; disabled state when not */}
+                  {/* Condition: show Apply Now button when open; disabled state when not.
+                      Clicking creates a draft via the API and navigates into the form. */}
                   {round.status === "open" ? (
-                    <a
-                      href="#"
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors"
+                    <button
+                      type="button"
+                      onClick={handleApply}
+                      disabled={starting}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      Apply Now
-                      <ArrowRight className="w-4 h-4" />
-                    </a>
+                      {starting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Starting…
+                        </>
+                      ) : (
+                        <>
+                          Apply Now
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
                   ) : (
                     // Disabled state — not a link, just a styled div
                     <div className="w-full rounded-xl bg-blue-500/60 px-5 py-3 text-sm font-bold text-blue-200 text-center">

@@ -1,8 +1,13 @@
-// Admin dashboard overview — accessible at /admin
-// The home page of the admin surface. Shows a high-level snapshot of platform activity:
-// how many grant rounds are open, total applications received, and current review status.
-// All numbers and table rows are placeholder data for now — real API calls come in a later step.
+"use client";
+// Client component: reads the JWT from localStorage to authenticate API calls
+// and manages loading/error state for the live counts and recent applications table.
 
+// Admin dashboard overview — accessible at /admin
+// High-level snapshot of platform activity: open grant rounds, total applications,
+// pending review queue, and the most recently active applications.
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Award,
   FileText,
@@ -11,65 +16,33 @@ import {
   ArrowRight,
   TrendingUp,
   Users,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 
-// Describes one row in the recent applications table
-interface ApplicationRow {
+// Shape of one application row used in the Recent Applications table.
+// Only includes the fields the dashboard actually renders.
+interface DashboardApplication {
   id: string;
-  applicant: string;   // name of the organisation that submitted the application
-  round: string;       // name of the grant round they applied for
-  amount: number;      // funding amount they requested, in AUD
+  funding_requested: number;
   status: "draft" | "submitted" | "under_review" | "approved" | "rejected";
-  submitted: string;   // human-readable submission date, e.g. "12 Jan 2025"
+  submitted_at: string | null;
+  created_at: string;
+  grant_round: { id: string; title: string };
+  applicant: { id: string; full_name: string; email: string } | null;
 }
 
-// Placeholder rows — replaced with real API data in a later build step
-const placeholderApplications: ApplicationRow[] = [
-  {
-    id: "1",
-    applicant: "Sunrise Community Centre",
-    round: "Community Arts Fund 2024",
-    amount: 25000,
-    status: "under_review",
-    submitted: "12 Jan 2025",
-  },
-  {
-    id: "2",
-    applicant: "Riverdale Youth Foundation",
-    round: "Regional Development Grant",
-    amount: 48000,
-    status: "submitted",
-    submitted: "10 Jan 2025",
-  },
-  {
-    id: "3",
-    applicant: "Coastal Wildlife Trust",
-    round: "Environmental Action Fund",
-    amount: 32000,
-    status: "approved",
-    submitted: "8 Jan 2025",
-  },
-  {
-    id: "4",
-    applicant: "Northern Arts Collective",
-    round: "Community Arts Fund 2024",
-    amount: 15000,
-    status: "submitted",
-    submitted: "7 Jan 2025",
-  },
-  {
-    id: "5",
-    applicant: "Mulgrave Community Hub",
-    round: "Regional Development Grant",
-    amount: 22000,
-    status: "rejected",
-    submitted: "5 Jan 2025",
-  },
-];
+// Aggregated counts shown in the four stat cards at the top of the dashboard.
+interface DashboardCounts {
+  activeRounds: number;
+  totalApplications: number;
+  pendingReview: number;   // submitted + under_review
+  approved: number;        // total approved (no date filter — see note in plan)
+}
 
 // Returns the Tailwind colour classes and display label for a given application status.
 // Each status gets a distinct colour so reviewers can scan the table at a glance.
-function getStatusBadge(status: ApplicationRow["status"]): {
+function getStatusBadge(status: DashboardApplication["status"]): {
   className: string;
   label: string;
 } {
@@ -92,13 +65,92 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-// Server component: renders the admin dashboard overview page at /admin
+// Formats an ISO date string as a short human-readable date.
+// e.g. "2025-09-30T23:59:59+00:00" → "30 Sep 2025"
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export default function AdminDashboardPage() {
+  // The 5 most recent non-draft applications shown in the table.
+  const [applications, setApplications] = useState<DashboardApplication[]>([]);
+
+  // Aggregated totals shown in the stat cards. null while the parallel fetch is in flight.
+  const [counts, setCounts] = useState<DashboardCounts | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetches the recent applications list and the four stat-card counts in parallel
+  // on first mount. We need the JWT from localStorage so this has to run client-side.
+  useEffect(() => {
+    async function fetchDashboard() {
+      const token = localStorage.getItem("grantly_token");
+      if (!token) return; // layout guard handles redirect; bail quietly here
+
+      const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const headers = { Authorization: `Bearer ${token}` };
+
+      try {
+        // Five list endpoints in parallel — we only read meta.total from the four count
+        // calls, but it's the cheapest available shape until aggregate endpoints exist.
+        const [recent, openRounds, totalApps, submitted, underReview, approved] =
+          await Promise.all([
+            fetch(`${base}/api/v1/applications`, { headers }),
+            fetch(`${base}/api/v1/grant-rounds?status=open`, { headers }),
+            fetch(`${base}/api/v1/applications`, { headers }),
+            fetch(`${base}/api/v1/applications?status=submitted`, { headers }),
+            fetch(`${base}/api/v1/applications?status=under_review`, { headers }),
+            fetch(`${base}/api/v1/applications?status=approved`, { headers }),
+          ]);
+
+        if (!recent.ok) {
+          const data = await recent.json().catch(() => ({}));
+          setError(data.error?.message ?? "Failed to load dashboard data.");
+          return;
+        }
+
+        const recentData = await recent.json();
+        const openRoundsData = await openRounds.json();
+        const totalAppsData = await totalApps.json();
+        const submittedData = await submitted.json();
+        const underReviewData = await underReview.json();
+        const approvedData = await approved.json();
+
+        // The API has no multi-status filter, so we drop drafts client-side
+        // and slice the first 5. The default per_page (15) gives enough buffer
+        // that drafts almost never push the table below 5 rows.
+        const nonDrafts: DashboardApplication[] = (recentData.data ?? [])
+          .filter((a: DashboardApplication) => a.status !== "draft")
+          .slice(0, 5);
+
+        setApplications(nonDrafts);
+        setCounts({
+          activeRounds: openRoundsData.meta?.total ?? 0,
+          totalApplications: totalAppsData.meta?.total ?? 0,
+          pendingReview:
+            (submittedData.meta?.total ?? 0) + (underReviewData.meta?.total ?? 0),
+          approved: approvedData.meta?.total ?? 0,
+        });
+      } catch {
+        setError("Could not reach the server. Please check your connection.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboard();
+  }, []);
+
   return (
     <div>
 
-      {/* ── Page header ───────────────────────────────────────────────
-          Title and description shown at the top of the main content area. */}
+      {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -108,145 +160,150 @@ export default function AdminDashboardPage() {
 
       {/* ── Stat cards ────────────────────────────────────────────────
           Four summary numbers that give the admin a quick pulse on the platform.
-          On small screens they stack; on large screens they sit in a row of four.  */}
+          Each big number falls back to a skeleton bar while the parallel fetch is in flight. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
 
-        {/* Active Grant Rounds — how many rounds are currently open */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500">Active Rounds</p>
-            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-              <Award className="w-5 h-5 text-blue-600" />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">3</p>
-          <p className="text-xs text-gray-400 mt-1">Currently open to applicants</p>
-        </div>
+        <StatCard
+          label="Active Rounds"
+          value={counts?.activeRounds}
+          loading={loading}
+          subtitle="Currently open to applicants"
+          icon={<Award className="w-5 h-5 text-blue-600" />}
+          iconBg="bg-blue-50"
+        />
 
-        {/* Total Applications — all applications received across every round */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500">Total Applications</p>
-            <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">47</p>
-          <p className="text-xs text-gray-400 mt-1">Across all rounds</p>
-        </div>
+        <StatCard
+          label="Total Applications"
+          value={counts?.totalApplications}
+          loading={loading}
+          subtitle="Across all rounds"
+          icon={<FileText className="w-5 h-5 text-purple-600" />}
+          iconBg="bg-purple-50"
+        />
 
-        {/* Pending Review — applications that are submitted or under review (need a decision) */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500">Pending Review</p>
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">12</p>
-          <p className="text-xs text-gray-400 mt-1">Awaiting a decision</p>
-        </div>
+        <StatCard
+          label="Pending Review"
+          value={counts?.pendingReview}
+          loading={loading}
+          subtitle="Awaiting a decision"
+          icon={<Clock className="w-5 h-5 text-amber-600" />}
+          iconBg="bg-amber-50"
+        />
 
-        {/* Approved This Month — successful applications in the current calendar month */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500">Approved</p>
-            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">8</p>
-          <p className="text-xs text-gray-400 mt-1">This month</p>
-        </div>
+        <StatCard
+          label="Approved"
+          value={counts?.approved}
+          loading={loading}
+          subtitle="Total approved"
+          icon={<CheckCircle className="w-5 h-5 text-green-600" />}
+          iconBg="bg-green-50"
+        />
 
       </div>
 
       {/* ── Lower content: recent applications table + quick actions ──────
-          Two-column grid on large screens.
-          The table takes 2/3 of the width; quick actions take the remaining 1/3. */}
+          Two-column grid on large screens. Table takes 2/3, quick actions 1/3. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* ── Recent Applications table ────────────────────────────────
-            Lists the 5 most recently submitted applications.
-            Spans 2 columns on the lg grid so it gets more horizontal space. */}
+        {/* ── Recent Applications table ──────────────────────────────── */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
 
-          {/* Table card header row: title on the left, "View all" link on the right */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h2 className="text-base font-semibold text-gray-900">Recent Applications</h2>
-            <a
+            <Link
               href="/admin/applications"
               className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
             >
               View all
               <ArrowRight className="w-3.5 h-3.5" />
-            </a>
+            </Link>
           </div>
 
-          {/* Horizontally scrollable in case the table is wider than the container */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          {/* Loading state replaces the table body so there's no layout jump. */}
+          {loading && (
+            <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading applications…</span>
+            </div>
+          )}
 
-              {/* Column headers */}
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Applicant</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Grant Round</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Amount</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Submitted</th>
-                </tr>
-              </thead>
+          {!loading && error && (
+            <div className="flex items-center justify-center py-16 px-5">
+              <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 max-w-md">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            </div>
+          )}
 
-              <tbody>
-                {placeholderApplications.map((app) => {
-                  // Look up the colour class and label for this row's status
-                  const badge = getStatusBadge(app.status);
+          {!loading && !error && applications.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                <FileText className="w-6 h-6 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-900 mb-1">No applications yet</p>
+              <p className="text-xs text-gray-400">
+                Submitted applications will appear here.
+              </p>
+            </div>
+          )}
 
-                  return (
-                    <tr
-                      key={app.id}
-                      className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                    >
-                      {/* Applicant organisation name */}
-                      <td className="px-5 py-3.5 font-medium text-gray-900 whitespace-nowrap">
-                        {app.applicant}
-                      </td>
+          {!loading && !error && applications.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
 
-                      {/* Grant round name — truncated at a max width to prevent overflow */}
-                      <td className="px-5 py-3.5 text-gray-500 max-w-[180px] truncate">
-                        {app.round}
-                      </td>
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Applicant</th>
+                    <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Grant Round</th>
+                    <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Amount</th>
+                    <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Status</th>
+                    <th className="text-left text-xs font-medium text-gray-500 px-5 py-3">Submitted</th>
+                  </tr>
+                </thead>
 
-                      {/* Requested funding amount, formatted as AUD currency */}
-                      <td className="px-5 py-3.5 text-gray-700 font-medium whitespace-nowrap">
-                        {formatCurrency(app.amount)}
-                      </td>
+                <tbody>
+                  {applications.map((app) => {
+                    const badge = getStatusBadge(app.status);
 
-                      {/* Status badge — pill with a colour matched to the status value */}
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
-                        >
-                          {badge.label}
-                        </span>
-                      </td>
+                    return (
+                      <tr
+                        key={app.id}
+                        className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-5 py-3.5 font-medium text-gray-900 whitespace-nowrap">
+                          {app.applicant?.full_name ?? "—"}
+                        </td>
 
-                      {/* Submission date */}
-                      <td className="px-5 py-3.5 text-gray-400 whitespace-nowrap">
-                        {app.submitted}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <td className="px-5 py-3.5 text-gray-500 max-w-[180px] truncate">
+                          {app.grant_round.title}
+                        </td>
+
+                        <td className="px-5 py-3.5 text-gray-700 font-medium whitespace-nowrap">
+                          {formatCurrency(app.funding_requested)}
+                        </td>
+
+                        <td className="px-5 py-3.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-3.5 text-gray-400 whitespace-nowrap">
+                          {formatDate(app.submitted_at)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {/* ── Quick Actions panel ──────────────────────────────────────
-            Shortcuts to the most common admin tasks.
-            Each action card links to the relevant page.             */}
+        {/* ── Quick Actions panel ────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
 
           <div className="px-5 py-4 border-b border-gray-100">
@@ -255,8 +312,7 @@ export default function AdminDashboardPage() {
 
           <div className="p-4 space-y-2">
 
-            {/* Create a new grant round */}
-            <a
+            <Link
               href="/admin/grant-rounds/new"
               className="flex items-center justify-between p-3.5 rounded-lg border border-gray-200 hover:border-blue-200 hover:bg-blue-50 transition-colors group"
             >
@@ -270,10 +326,9 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0" />
-            </a>
+            </Link>
 
-            {/* Review submitted/pending applications */}
-            <a
+            <Link
               href="/admin/applications?status=submitted"
               className="flex items-center justify-between p-3.5 rounded-lg border border-gray-200 hover:border-amber-200 hover:bg-amber-50 transition-colors group"
             >
@@ -283,14 +338,18 @@ export default function AdminDashboardPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">Review Applications</p>
-                  <p className="text-xs text-gray-500">12 applications need a decision</p>
+                  <p className="text-xs text-gray-500">
+                    {/* Live count of applications waiting on a decision (submitted + under_review). */}
+                    {counts
+                      ? `${counts.pendingReview} application${counts.pendingReview !== 1 ? "s" : ""} need a decision`
+                      : "Loading…"}
+                  </p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-amber-600 transition-colors flex-shrink-0" />
-            </a>
+            </Link>
 
-            {/* View all applicants / full application list */}
-            <a
+            <Link
               href="/admin/applications"
               className="flex items-center justify-between p-3.5 rounded-lg border border-gray-200 hover:border-purple-200 hover:bg-purple-50 transition-colors group"
             >
@@ -304,10 +363,9 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-purple-600 transition-colors flex-shrink-0" />
-            </a>
+            </Link>
 
-            {/* Manage grant rounds */}
-            <a
+            <Link
               href="/admin/grant-rounds"
               className="flex items-center justify-between p-3.5 rounded-lg border border-gray-200 hover:border-green-200 hover:bg-green-50 transition-colors group"
             >
@@ -321,12 +379,47 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-green-600 transition-colors flex-shrink-0" />
-            </a>
+            </Link>
 
           </div>
         </div>
 
       </div>
+    </div>
+  );
+}
+
+// One stat card. Shows a skeleton bar in place of the number while the
+// parent's parallel fetch is still in flight, then swaps to the live count.
+function StatCard({
+  label,
+  value,
+  loading,
+  subtitle,
+  icon,
+  iconBg,
+}: {
+  label: string;
+  value: number | undefined;
+  loading: boolean;
+  subtitle: string;
+  icon: React.ReactNode;
+  iconBg: string;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm font-medium text-gray-500">{label}</p>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${iconBg}`}>
+          {icon}
+        </div>
+      </div>
+      {loading || value === undefined ? (
+        <div className="h-9 w-16 bg-gray-100 rounded animate-pulse" />
+      ) : (
+        <p className="text-3xl font-bold text-gray-900">{value}</p>
+      )}
+      <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
     </div>
   );
 }

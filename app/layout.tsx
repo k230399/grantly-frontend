@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 // PrelineScript wires up Preline's interactive JS on every page and route change
 import PrelineScript from "@/components/preline-script";
+// ToastProvider makes the global floating toast system available to every page in the app
+import { ToastProvider } from "@/contexts/ToastContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +34,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        {/* ToastProvider wraps everything so any page can call useToast() to show a floating toast */}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
         {/* PrelineScript renders nothing visible — it only initialises Preline JS */}
         <PrelineScript />
       </body>

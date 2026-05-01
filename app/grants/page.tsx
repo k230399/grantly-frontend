@@ -22,27 +22,27 @@ import PublicNav from "../components/PublicNav";
 
 // The shape of a single grant round as returned by GET /api/v1/grant-rounds
 interface GrantRound {
-  id: string;                          // unique identifier (UUID)
-  title: string;                       // display name of the round
-  short_description: string | null;    // optional one-liner shown on listing cards
-  cover_image_url: string | null;      // optional hero image URL
-  min_funding_amount: number | null;   // minimum funding applicants can request (AUD)
-  max_funding_amount: number;          // maximum funding applicants can request (AUD)
-  status: "draft" | "open" | "closed" | "completed"; // current lifecycle stage
-  is_published: boolean;               // whether this round is publicly visible
-  is_featured: boolean;                // whether it should appear first in the list
-  opens_at: string | null;             // ISO date when applications open
-  closes_at: string | null;            // ISO date when applications close
-  key_focus_areas: string[] | null;    // topic tags e.g. ["Arts & Culture"]
-  geographic_restrictions: string | null; // e.g. "Queensland and NSW only"
+  id: string;
+  title: string;
+  short_description: string | null;
+  cover_image_url: string | null;
+  min_funding_amount: number | null;
+  max_funding_amount: number;
+  status: "draft" | "open" | "closed" | "completed";
+  is_published: boolean;
+  is_featured: boolean;
+  opens_at: string | null;
+  closes_at: string | null;
+  key_focus_areas: string[] | null;
+  geographic_restrictions: string | null;
 }
 
 // Pagination info returned alongside the data array from the API
 interface PaginationMeta {
-  current_page: number; // which page we're on right now (1-indexed)
-  last_page: number;    // total number of pages
-  per_page: number;     // items per page
-  total: number;        // total rounds matching the current query
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
 }
 
 // Formats a number as Australian dollars without decimal places.
@@ -269,7 +269,7 @@ export default function GrantsPage() {
   }, []); // empty array — runs once when the page first loads
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <PublicNav/>
 
       {/* Hero section */}
@@ -294,7 +294,7 @@ export default function GrantsPage() {
       </section>
 
       {/* Main content area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
         {/* Loading state */}
         {loading && (

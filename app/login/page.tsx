@@ -101,10 +101,17 @@ export default function SignInPage() {
       setShowSuccess(true);
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      // Route the user to the correct surface based on their role.
-      // Admins go to the admin dashboard; applicants go to their dashboard.
+      // If the user was redirected here from a protected applicant route,
+      // that page passes a `?next=` query param so we can return them to it
+      // after sign-in. Read from window.location at click time to avoid the
+      // Suspense boundary requirement that useSearchParams imposes on static
+      // pages. Only allow same-origin paths so ?next=https://evil.com can't
+      // bounce them off-site. Admins always go to /admin regardless of next.
+      const nextPath = new URLSearchParams(window.location.search).get("next");
       if (successData.user.role === "admin") {
         router.push("/admin");
+      } else if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
+        router.push(nextPath);
       } else {
         router.push("/dashboard");
       }
