@@ -248,13 +248,13 @@ export default function GrantDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
 
       <PublicNav />
 
       {/* Loading state */}
       {loading && (
-        <div className="flex items-center justify-center py-32 gap-2 text-gray-400">
+        <div className="flex items-center justify-center py-32 gap-2 text-gray-400 flex-1">
           <Loader2 className="w-5 h-5 animate-spin" />
           <span className="text-sm">Loading grant details…</span>
         </div>
@@ -349,7 +349,7 @@ export default function GrantDetailPage() {
           </div>
 
           {/* Page body: main content column + right sidebar */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1">
             <div className="flex flex-col lg:flex-row gap-8">
 
               {/* Left column: main content sections */}
