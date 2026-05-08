@@ -23,6 +23,10 @@ import {
   DollarSign,
   Clock,
   Download,
+  MessageSquare,
+  Pencil,
+  Trash2,
+  Send,
 } from "lucide-react";
 import FormRenderer, { type FormData } from "@/app/components/FormRenderer";
 import type { ApplicationFormSchema } from "@/components/admin/FormSchemaBuilder";
@@ -47,6 +51,21 @@ interface StatusHistoryEntry {
   notes: string | null;
   changed_by: string | null;
   changed_at: string;
+}
+
+// One admin-only review note attached to this application.
+interface ReviewNote {
+  id: string;
+  application_id: string;
+  reviewer_id: string;
+  note_content: string;
+  created_at: string;
+  updated_at: string;
+  reviewer?: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
 }
 
 // Full application shape returned by GET /api/v1/applications/{id}.
@@ -171,12 +190,31 @@ export default function ApplicationDetailPage() {
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Fetches the application detail and status history in parallel on mount and
-  // whenever the URL id changes (rare, but covers client-side nav between siblings).
+  // Review notes state. currentUserId is read from localStorage so we can show
+  // edit/delete controls only on the admin's own notes.
+  const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Fetches the application detail, status history, and review notes in parallel
+  // on mount and whenever the URL id changes (rare, but covers client-side nav
+  // between siblings). Also reads the signed-in admin's id from localStorage so
+  // ownership-based edit/delete buttons can render correctly on review notes.
   useEffect(() => {
     async function fetchApplication() {
       setLoading(true);
       setError(null);
+
+      // Pull the admin's id from the stored user payload — used to scope the
+      // edit/delete affordances on review notes to the author of each note.
+      const rawUser = localStorage.getItem("grantly_user");
+      if (rawUser) {
+        try {
+          const parsed = JSON.parse(rawUser) as { id?: string };
+          if (parsed.id) setCurrentUserId(parsed.id);
+        } catch {
+          // Corrupt localStorage — ignore; ownership checks will fail closed.
+        }
+      }
 
       const token = localStorage.getItem("grantly_token");
       if (!token) return;
@@ -185,9 +223,10 @@ export default function ApplicationDetailPage() {
       const headers = { Authorization: `Bearer ${token}` };
 
       try {
-        const [detailRes, historyRes] = await Promise.all([
+        const [detailRes, historyRes, notesRes] = await Promise.all([
           fetch(`${base}/api/v1/applications/${applicationId}`, { headers }),
           fetch(`${base}/api/v1/applications/${applicationId}/status-history`, { headers }),
+          fetch(`${base}/api/v1/applications/${applicationId}/review-notes`, { headers }),
         ]);
 
         const detailData = await detailRes.json();
@@ -200,10 +239,14 @@ export default function ApplicationDetailPage() {
 
         setApplication(detailData.data ?? detailData);
 
-        // History is non-critical — if it fails we still show the detail.
+        // History and notes are non-critical — if either fails we still show the detail.
         if (historyRes.ok) {
           const historyData = await historyRes.json();
           setHistory(historyData.data ?? []);
+        }
+        if (notesRes.ok) {
+          const notesData = await notesRes.json();
+          setReviewNotes(notesData.data ?? []);
         }
       } catch {
         setError("Could not reach the server. Please check your connection.");
@@ -214,6 +257,87 @@ export default function ApplicationDetailPage() {
 
     fetchApplication();
   }, [applicationId]);
+
+  // ─── Review note handlers ──────────────────────────────────────────────
+
+  // Posts a new admin-only review note on this application.
+  async function createReviewNote(content: string): Promise<boolean> {
+    const token = localStorage.getItem("grantly_token");
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+    try {
+      const res = await fetch(`${base}/api/v1/applications/${applicationId}/review-notes`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ note_content: content }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error?.message ?? "Failed to post note.", "error");
+        return false;
+      }
+      // Prepend so the newest note appears at the top of the list.
+      setReviewNotes((prev) => [data.data ?? data, ...prev]);
+      showToast("Note posted.", "success");
+      return true;
+    } catch {
+      showToast("Could not reach the server. Please check your connection.", "error");
+      return false;
+    }
+  }
+
+  // Updates an existing note's content. Server enforces author-only edits.
+  async function updateReviewNote(noteId: string, content: string): Promise<boolean> {
+    const token = localStorage.getItem("grantly_token");
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+    try {
+      const res = await fetch(`${base}/api/v1/review-notes/${noteId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ note_content: content }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error?.message ?? "Failed to update note.", "error");
+        return false;
+      }
+      const updated: ReviewNote = data.data ?? data;
+      setReviewNotes((prev) => prev.map((n) => (n.id === noteId ? updated : n)));
+      showToast("Note updated.", "success");
+      return true;
+    } catch {
+      showToast("Could not reach the server. Please check your connection.", "error");
+      return false;
+    }
+  }
+
+  // Deletes a note. Server enforces author-only deletion.
+  async function deleteReviewNote(noteId: string): Promise<void> {
+    const token = localStorage.getItem("grantly_token");
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+    try {
+      const res = await fetch(`${base}/api/v1/review-notes/${noteId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error?.message ?? "Failed to delete note.", "error");
+        return;
+      }
+      setReviewNotes((prev) => prev.filter((n) => n.id !== noteId));
+      showToast("Note deleted.", "success");
+    } catch {
+      showToast("Could not reach the server. Please check your connection.", "error");
+    }
+  }
 
   // Re-fetches just the status history. Called after a successful status
   // change to pick up the new audit-log entry without a full page reload.
@@ -374,7 +498,7 @@ export default function ApplicationDetailPage() {
             type="button"
             onClick={() => setActionStatus("under_review")}
             disabled={application.status === "under_review"}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white cursor-pointer"
           >
             <Eye className="w-4 h-4" />
             Mark Under Review
@@ -383,7 +507,7 @@ export default function ApplicationDetailPage() {
             type="button"
             onClick={() => setActionStatus("rejected")}
             disabled={application.status === "rejected"}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white cursor-pointer"
           >
             <XCircle className="w-4 h-4" />
             Reject
@@ -392,7 +516,7 @@ export default function ApplicationDetailPage() {
             type="button"
             onClick={() => setActionStatus("approved")}
             disabled={application.status === "approved"}
-            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-600"
+            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-600 cursor-pointer"
           >
             <CheckCircle className="w-4 h-4" />
             Approve
@@ -558,6 +682,15 @@ export default function ApplicationDetailPage() {
               value={formatDateTime(application.updated_at)}
             />
           </Card>
+
+          {/* Review notes — admin-only internal scratchpad */}
+          <ReviewNotesCard
+            notes={reviewNotes}
+            currentUserId={currentUserId}
+            onCreate={createReviewNote}
+            onUpdate={updateReviewNote}
+            onDelete={deleteReviewNote}
+          />
 
           {/* Status history timeline */}
           <Card title="Status History">
@@ -785,5 +918,237 @@ function MetaRow({
       </span>
       <span className="text-gray-900 font-medium text-right">{value}</span>
     </div>
+  );
+}
+
+// Review notes card — composes the new-note form and the existing-notes list.
+// Notes are admin-only; there's no public/internal split.
+function ReviewNotesCard({
+  notes,
+  currentUserId,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: {
+  notes: ReviewNote[];
+  currentUserId: string | null;
+  onCreate: (content: string) => Promise<boolean>;
+  onUpdate: (noteId: string, content: string) => Promise<boolean>;
+  onDelete: (noteId: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  async function handlePost() {
+    if (!draft.trim()) return;
+    setPosting(true);
+    const ok = await onCreate(draft.trim());
+    setPosting(false);
+    if (ok) setDraft("");
+  }
+
+  return (
+    <Card
+      title="Review Notes"
+      subtitle={`Internal · ${notes.length} note${notes.length !== 1 ? "s" : ""}`}
+    >
+      {/* New-note form */}
+      <div className="space-y-2.5">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          maxLength={5000}
+          disabled={posting}
+          placeholder="Add a note about this application…"
+          className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 disabled:bg-gray-50 resize-y"
+        />
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={handlePost}
+            disabled={posting || !draft.trim()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {posting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Send className="w-3.5 h-3.5" />
+            )}
+            Post note
+          </button>
+        </div>
+      </div>
+
+      {/* Existing notes list — divider above when at least one exists */}
+      {notes.length > 0 && (
+        <ul className="divide-y divide-gray-100 -mx-5 border-t border-gray-100">
+          {notes.map((note) => (
+            <ReviewNoteItem
+              key={note.id}
+              note={note}
+              isOwner={!!currentUserId && note.reviewer_id === currentUserId}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+            />
+          ))}
+        </ul>
+      )}
+
+      {notes.length === 0 && (
+        <div className="flex items-center gap-2 text-sm text-gray-400 italic">
+          <MessageSquare className="w-4 h-4" />
+          No notes yet.
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// One row in the review-notes list. Toggles between read and edit mode locally;
+// owner-only edit/delete buttons are gated by the `isOwner` prop from the parent.
+function ReviewNoteItem({
+  note,
+  isOwner,
+  onUpdate,
+  onDelete,
+}: {
+  note: ReviewNote;
+  isOwner: boolean;
+  onUpdate: (noteId: string, content: string) => Promise<boolean>;
+  onDelete: (noteId: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(note.note_content);
+  const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Initials for the avatar — same pattern as the Applicant card on this page.
+  const initials = (note.reviewer?.full_name ?? "?")
+    .split(" ")
+    .map((s) => s[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  async function saveEdit() {
+    if (!editText.trim()) return;
+    setSaving(true);
+    const ok = await onUpdate(note.id, editText.trim());
+    setSaving(false);
+    if (ok) setEditing(false);
+  }
+
+  function cancelEdit() {
+    setEditText(note.note_content);
+    setEditing(false);
+  }
+
+  async function confirmDelete() {
+    await onDelete(note.id);
+    setConfirmingDelete(false);
+  }
+
+  return (
+    <li className="px-5 py-4">
+      <div className="flex items-start gap-3">
+        {/* Reviewer avatar */}
+        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <span className="text-xs font-semibold text-gray-600">{initials}</span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {/* Header row: name, timestamp */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-gray-900 truncate">
+              {note.reviewer?.full_name ?? "Unknown reviewer"}
+            </span>
+            <span className="text-xs text-gray-400">
+              {formatDateTime(note.created_at)}
+            </span>
+          </div>
+
+          {/* Body — read mode vs edit mode */}
+          {editing ? (
+            <div className="mt-2 space-y-2">
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={3}
+                maxLength={5000}
+                disabled={saving}
+                className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 disabled:bg-gray-50 resize-y"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={saving || !editText.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1 leading-relaxed">
+              {note.note_content}
+            </p>
+          )}
+
+          {/* Owner-only edit/delete row, hidden while editing or confirming delete */}
+          {isOwner && !editing && !confirmingDelete && (
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+              >
+                <Pencil className="w-3 h-3" />
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" />
+                Delete
+              </button>
+            </div>
+          )}
+
+          {/* Inline delete confirmation — keeps the destructive action one click away */}
+          {confirmingDelete && (
+            <div className="flex items-center gap-2 mt-2 text-xs">
+              <span className="text-gray-600">Delete this note?</span>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="rounded-lg bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 transition-colors cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }

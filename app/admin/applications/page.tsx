@@ -1,10 +1,5 @@
 "use client";
-// Client component: reads the JWT from localStorage to authenticate API calls
-// and manages filter, search, dropdown, and pagination state interactively.
-
-// Applications list page — accessible at /admin/applications.
-// Lists every application across every grant round so admins can review,
-// filter by status, search by project name, and scope to a single round.
+// Reads JWT from localStorage and manages filter/search/pagination state.
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -18,8 +13,6 @@ import {
   Search,
 } from "lucide-react";
 
-// Shape of a single application as returned by GET /api/v1/applications.
-// Only includes the fields rendered on this page.
 interface Application {
   id: string;
   reference_number: string;
@@ -32,7 +25,6 @@ interface Application {
   applicant: { id: string; full_name: string; email: string } | null;
 }
 
-// Pagination info returned alongside the data array from the API.
 interface PaginationMeta {
   current_page: number;
   last_page: number;
@@ -40,13 +32,12 @@ interface PaginationMeta {
   total: number;
 }
 
-// Bare-bones grant round shape used to populate the round dropdown.
 interface RoundOption {
   id: string;
   title: string;
 }
 
-// "all" is a frontend-only sentinel — we just omit ?status= from the API call when it's selected.
+// "all" is a frontend-only sentinel — omitted from the ?status= query.
 type StatusFilter = "all" | "draft" | "submitted" | "under_review" | "approved" | "rejected";
 
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
@@ -58,7 +49,6 @@ const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: "rejected",     label: "Rejected" },
 ];
 
-// Returns the Tailwind colour classes and display label for an application status.
 function getStatusBadge(status: Application["status"]): { className: string; label: string } {
   switch (status) {
     case "draft":        return { className: "bg-gray-100 text-gray-600",   label: "Draft" };
@@ -86,12 +76,36 @@ function formatDate(iso: string | null): string {
   });
 }
 
-// Narrow an arbitrary string to a known StatusFilter, returning "all" otherwise.
-// Used to validate the ?status= query param the dashboard's Quick Actions card sends.
+// Validates the ?status= query param the dashboard's Quick Actions card sends.
 function parseStatus(raw: string | null): StatusFilter {
   const valid: StatusFilter[] = ["all", "draft", "submitted", "under_review", "approved", "rejected"];
   return valid.includes(raw as StatusFilter) ? (raw as StatusFilter) : "all";
 }
+
+// Preline advanced-select config for the round filter. hasSearch turns on the
+// in-dropdown search box; the wrapper is sticky so it stays visible while options scroll.
+const ROUND_SELECT_CONFIG = JSON.stringify({
+  placeholder: "All rounds",
+  toggleTag: '<button type="button" aria-expanded="false"></button>',
+  toggleClasses:
+    "hs-select-disabled:pointer-events-none hs-select-disabled:opacity-50 relative py-2 px-3 pe-9 flex text-nowrap min-w-[200px] cursor-pointer bg-white border border-gray-200 rounded-lg text-start text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent before:absolute before:inset-0 before:z-[1]",
+  dropdownClasses:
+    "mt-2 z-50 w-full max-h-72 p-1 space-y-0.5 bg-white border border-gray-200 rounded-lg overflow-hidden overflow-y-auto shadow-md",
+  optionClasses:
+    "py-2 px-3 w-full text-sm text-gray-800 cursor-pointer hover:bg-gray-100 rounded-md focus:outline-none focus:bg-gray-100",
+  optionTemplate:
+    '<div class="flex justify-between items-center w-full"><span data-title></span><span class="hidden hs-selected:block"><svg class="shrink-0 size-3.5 text-blue-600" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div>',
+  extraMarkup:
+    '<div class="absolute top-1/2 end-3 -translate-y-1/2"><svg class="shrink-0 size-3.5 text-gray-500" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg></div>',
+  hasSearch: true,
+  searchPlaceholder: "Search rounds…",
+  searchClasses:
+    "block w-full text-sm border border-gray-200 rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+  searchWrapperClasses: "bg-white p-2 -m-1 mb-1 sticky top-0 border-b border-gray-100",
+  searchNoResultText: "No rounds match your search.",
+  searchNoResultClasses:
+    "py-2 px-3 text-sm text-gray-400 italic",
+});
 
 export default function ApplicationsPage() {
   const router = useRouter();
@@ -104,22 +118,19 @@ export default function ApplicationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Seed the status tab from ?status= so the dashboard's "Review Applications"
-  // shortcut lands with the Submitted tab pre-selected.
+  // Seeded from ?status= so the dashboard's "Review Applications" link can deep-link to a tab.
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() =>
     parseStatus(searchParams.get("status"))
   );
   const [grantRoundId, setGrantRoundId] = useState<string>("");
 
-  // Two states for search: searchInput is what the user types right now,
-  // searchQuery is the debounced value that actually gets sent to the API.
+  // searchInput is the live value; searchQuery is debounced and sent to the API.
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [page, setPage] = useState(1);
 
-  // One-time fetch to populate the grant-round dropdown. Admins see every round,
-  // so a single page=1 with a generous per_page covers all but the largest orgs.
+  // Fetches all grant rounds once on mount to populate the round filter dropdown.
   useEffect(() => {
     async function fetchRounds() {
       const token = localStorage.getItem("grantly_token");
@@ -131,22 +142,31 @@ export default function ApplicationsPage() {
           { headers: { Authorization: `Bearer ${token}` } }
         );
 
-        if (!res.ok) return; // dropdown is non-critical; fail silently
+        if (!res.ok) return;
 
         const data = await res.json();
         setRounds(
           (data.data ?? []).map((r: RoundOption) => ({ id: r.id, title: r.title }))
         );
       } catch {
-        // dropdown stays empty; user can still browse without round filter
+        // Filter dropdown is non-critical — user can still browse without it.
       }
     }
 
     fetchRounds();
   }, []);
 
-  // Debounce the search input by 300 ms so we don't fire a request on every keystroke.
-  // Resets the page so the new results start from page 1.
+  // Initialises Preline on the select once rounds load. Re-initing on the same
+  // node causes a React/DOM ownership conflict, so the select below only mounts
+  // after rounds arrive and this effect fires exactly once.
+  useEffect(() => {
+    if (rounds.length === 0) return;
+    import("preline").then(({ HSStaticMethods }) => {
+      HSStaticMethods.autoInit(["select"]);
+    });
+  }, [rounds.length]);
+
+  // Debounces the search input by 300 ms and resets to page 1 when it changes.
   useEffect(() => {
     const t = setTimeout(() => {
       setSearchQuery(searchInput);
@@ -156,7 +176,7 @@ export default function ApplicationsPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  // Main list fetch — re-runs whenever any filter or the page number changes.
+  // Re-fetches the list whenever any filter or the page number changes.
   useEffect(() => {
     async function fetchApplications() {
       setLoading(true);
@@ -209,13 +229,12 @@ export default function ApplicationsPage() {
     setPage(1);
   }
 
-  // True when at least one of the three filters narrows the list — used to pick the empty-state copy.
   const hasActiveFilter = statusFilter !== "all" || grantRoundId !== "" || searchQuery !== "";
 
   return (
     <div>
 
-      {/* ── Page header ────────────────────────────────────────────────── */}
+      {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Applications</h1>
@@ -225,10 +244,10 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {/* ── Main card — filters + table ──────────────────────────────── */}
+      {/* Main card — filters + table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
 
-        {/* Status filter tabs along the top of the card */}
+        {/* Status filter tabs */}
         <div className="flex items-center gap-1 px-4 pt-3 border-b border-gray-100 overflow-x-auto">
           {STATUS_TABS.map(({ value, label }) => {
             const isActive = statusFilter === value;
@@ -248,7 +267,7 @@ export default function ApplicationsPage() {
           })}
         </div>
 
-        {/* Search input + grant-round dropdown row */}
+        {/* Search input + round filter */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4 border-b border-gray-100">
 
           <div className="relative flex-1 max-w-md">
@@ -262,19 +281,29 @@ export default function ApplicationsPage() {
             />
           </div>
 
-          <select
-            value={grantRoundId}
-            onChange={(e) => handleRoundChange(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-          >
-            <option value="">All rounds</option>
-            {rounds.map((r) => (
-              <option key={r.id} value={r.id}>{r.title}</option>
-            ))}
-          </select>
+          {/* Round filter — Preline replaces the hidden native select after rounds load. */}
+          <div className="relative min-w-[200px]">
+            {rounds.length === 0 ? (
+              <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-400">
+                Loading rounds…
+              </div>
+            ) : (
+              <select
+                value={grantRoundId}
+                onChange={(e) => handleRoundChange(e.target.value)}
+                data-hs-select={ROUND_SELECT_CONFIG}
+                className="hidden"
+              >
+                <option value="">All rounds</option>
+                {rounds.map((r) => (
+                  <option key={r.id} value={r.id}>{r.title}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
-        {/* Loading / error / empty / table — same structure as grant-rounds list */}
+        {/* Loading / error / empty / table */}
 
         {loading && (
           <div className="flex items-center justify-center py-20 gap-2 text-gray-400">
@@ -369,7 +398,6 @@ export default function ApplicationsPage() {
                           {formatDate(app.submitted_at)}
                         </td>
 
-                        {/* Detail page lands in a follow-up build step; the link is set up now so the row is already navigable. */}
                         <td className="px-5 py-4 text-right">
                           <Link
                             href={`/admin/applications/${app.id}`}
