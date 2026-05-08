@@ -5,8 +5,7 @@
 // Application detail page — accessible at /admin/applications/[id].
 // Read-only view of a single application: project details, applicant, grant round,
 // custom form answers, documents, and status-change audit trail.
-// Action buttons (approve / under review / reject) are placeholder-only for now —
-// the wire-up to PATCH /applications/{id}/status comes in a follow-up step.
+// Action buttons open a confirmation modal that PATCHes /applications/{id}/status.
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -27,6 +26,7 @@ import {
 } from "lucide-react";
 import FormRenderer, { type FormData } from "@/app/components/FormRenderer";
 import type { ApplicationFormSchema } from "@/components/admin/FormSchemaBuilder";
+import { useToast } from "@/contexts/ToastContext";
 
 // One uploaded supporting document attached to the application.
 interface ApplicationDocument {
@@ -150,14 +150,26 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Targets for the admin's status-change buttons. Draft + submitted are not
+// admin-driven transitions — applicants own those — so they're not exposed.
+type ActionStatus = "under_review" | "approved" | "rejected";
+
 export default function ApplicationDetailPage() {
   const params = useParams<{ id: string }>();
   const applicationId = params.id;
+  const { showToast } = useToast();
 
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Status-change modal state: which target status is being confirmed,
+  // optional reviewer notes, in-flight + error state for the PATCH request.
+  const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
+  const [actionNotes, setActionNotes] = useState("");
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Fetches the application detail and status history in parallel on mount and
   // whenever the URL id changes (rare, but covers client-side nav between siblings).
@@ -202,6 +214,86 @@ export default function ApplicationDetailPage() {
 
     fetchApplication();
   }, [applicationId]);
+
+  // Re-fetches just the status history. Called after a successful status
+  // change to pick up the new audit-log entry without a full page reload.
+  async function refreshStatusHistory() {
+    const token = localStorage.getItem("grantly_token");
+    if (!token) return;
+
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+    try {
+      const res = await fetch(`${base}/api/v1/applications/${applicationId}/status-history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data.data ?? []);
+      }
+    } catch {
+      // Silent — the modal already closed and the application state is fresh.
+    }
+  }
+
+  // Closes the status-change modal and resets its transient fields.
+  function closeStatusModal() {
+    setActionStatus(null);
+    setActionNotes("");
+    setActionError(null);
+  }
+
+  // Sends the PATCH /applications/{id}/status request, then refreshes
+  // the page state so the badge, history timeline, and buttons all reflect
+  // the new status.
+  async function submitStatusChange() {
+    if (!actionStatus) return;
+
+    setActionSubmitting(true);
+    setActionError(null);
+
+    const token = localStorage.getItem("grantly_token");
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+    try {
+      const res = await fetch(`${base}/api/v1/applications/${applicationId}/status`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          status: actionStatus,
+          notes: actionNotes.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const message = data.error?.message ?? "Failed to update status.";
+        setActionError(message);
+        showToast(message, "error");
+        setActionSubmitting(false);
+        return;
+      }
+
+      // The PATCH response loads applicant + grantRound but not documents,
+      // so merge the new fields onto the existing application state to keep
+      // the documents list and any other related data intact.
+      const updated = data.data ?? data;
+      setApplication((prev) => (prev ? { ...prev, ...updated, documents: prev.documents } : updated));
+      await refreshStatusHistory();
+      closeStatusModal();
+      showToast(`Application marked as ${statusLabel(actionStatus)}.`, "success");
+    } catch {
+      const message = "Could not reach the server. Please check your connection.";
+      setActionError(message);
+      showToast(message, "error");
+    } finally {
+      setActionSubmitting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -273,31 +365,34 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
 
-        {/* Placeholder action buttons — wire-up comes in a follow-up step. */}
+        {/* Status-change buttons — clicking opens a confirmation modal where
+            the admin can add an optional reviewer note before submitting. The
+            button matching the current status is disabled (the API would
+            otherwise return no_status_change). */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
-            disabled
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-500 cursor-not-allowed"
-            title="Coming soon"
+            onClick={() => setActionStatus("under_review")}
+            disabled={application.status === "under_review"}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             <Eye className="w-4 h-4" />
             Mark Under Review
           </button>
           <button
             type="button"
-            disabled
-            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 cursor-not-allowed opacity-60"
-            title="Coming soon"
+            onClick={() => setActionStatus("rejected")}
+            disabled={application.status === "rejected"}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             <XCircle className="w-4 h-4" />
             Reject
           </button>
           <button
             type="button"
-            disabled
-            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3.5 py-2 text-sm font-medium text-white cursor-not-allowed opacity-60"
-            title="Coming soon"
+            onClick={() => setActionStatus("approved")}
+            disabled={application.status === "approved"}
+            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-600"
           >
             <CheckCircle className="w-4 h-4" />
             Approve
@@ -502,6 +597,128 @@ export default function ApplicationDetailPage() {
 
         </div>
 
+      </div>
+
+      {/* ── Status-change confirmation modal ─────────────────────────── */}
+      {actionStatus && (
+        <StatusChangeModal
+          targetStatus={actionStatus}
+          currentStatus={application.status}
+          notes={actionNotes}
+          onNotesChange={setActionNotes}
+          submitting={actionSubmitting}
+          error={actionError}
+          onCancel={closeStatusModal}
+          onConfirm={submitStatusChange}
+        />
+      )}
+    </div>
+  );
+}
+
+// Confirmation modal used by the three admin status-change buttons.
+// Shows the current → target transition and exposes an optional notes field
+// that gets recorded on the audit-log entry.
+function StatusChangeModal({
+  targetStatus,
+  currentStatus,
+  notes,
+  onNotesChange,
+  submitting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  targetStatus: ActionStatus;
+  currentStatus: ApplicationDetail["status"];
+  notes: string;
+  onNotesChange: (next: string) => void;
+  submitting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const targetLabel = statusLabel(targetStatus);
+
+  // Confirm button colour mirrors the trigger button so the action stays
+  // visually consistent from click to confirm.
+  const confirmClass =
+    targetStatus === "approved"
+      ? "bg-green-600 hover:bg-green-700 text-white"
+      : targetStatus === "rejected"
+        ? "bg-red-600 hover:bg-red-700 text-white"
+        : "bg-gray-900 hover:bg-gray-800 text-white";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Click-outside backdrop — clicking dismisses the modal */}
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={submitting ? undefined : onCancel}
+        className="absolute inset-0 bg-black/40"
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Confirm status change to ${targetLabel}`}
+        className="relative w-full max-w-md bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden"
+      >
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">
+            Change status to {targetLabel}
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            <span className="capitalize">{statusLabel(currentStatus)}</span>
+            <span className="mx-1.5 text-gray-400">→</span>
+            <span className="font-medium">{targetLabel}</span>
+          </p>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <label className="block">
+            <span className="text-xs font-medium text-gray-700">
+              Reviewer notes <span className="text-gray-400 font-normal">(optional)</span>
+            </span>
+            <textarea
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              rows={4}
+              maxLength={2000}
+              disabled={submitting}
+              placeholder="Visible to the applicant on the audit trail."
+              className="mt-1.5 block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 disabled:bg-gray-50"
+            />
+          </label>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${confirmClass}`}
+          >
+            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+            Confirm
+          </button>
+        </div>
       </div>
     </div>
   );

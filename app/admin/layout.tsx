@@ -156,13 +156,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* ── Sidebar footer — user info + sign out ───────────────────
+        {/* ── Sidebar footer — user info + sign out icon ──────────────
             Pinned to the bottom of the sidebar.
-            Shows the admin's name, email, and a sign-out button.    */}
+            Avatar + name/email on the left, sign-out icon on the right. */}
         <div className="border-t border-gray-100 p-4">
-
-          {/* User info row — avatar initial + name + email */}
-          <div className="flex items-center gap-3 mb-3 px-1">
+          <div className="flex items-center gap-3 px-1">
             {/* Avatar: a coloured circle with the first letter of the admin's name */}
             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
               <span className="text-blue-700 text-sm font-semibold">
@@ -170,21 +168,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </span>
             </div>
             {/* Name and email — both truncated if longer than the sidebar width */}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-900 truncate">{user.full_name}</p>
               <p className="text-xs text-gray-500 truncate">{user.email}</p>
             </div>
+            {/* Sign out — icon-only button, red hover marks the destructive action */}
+            <button
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              title="Sign out"
+              className="flex-shrink-0 p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-
-          {/* Sign out button — red hover makes the destructive action obvious */}
-          <button
-            onClick={handleSignOut}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign out
-          </button>
-
         </div>
       </aside>
 

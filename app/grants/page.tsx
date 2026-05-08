@@ -1,9 +1,4 @@
 "use client";
-// "use client" because we use useState and useEffect to manage the
-// loading state and grant rounds data fetched from the API.
-
-// Public grant rounds browse page — accessible at /grants.
-// No login required. Shows all open, published grant rounds in a card grid.
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
