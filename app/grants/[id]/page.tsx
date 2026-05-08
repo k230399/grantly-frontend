@@ -275,7 +275,7 @@ export default function GrantDetailPage() {
         </div>
       )}
 
-      {/* Main content — only rendered once the round has been loaded */}
+      {/* Main content — only rendered once the round has loaded */}
       {!loading && !error && round && (
         <>
           {/* Admin preview banner */}
