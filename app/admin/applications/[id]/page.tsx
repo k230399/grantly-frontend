@@ -1,11 +1,5 @@
 "use client";
-// Client component: reads the JWT from localStorage to authenticate the API calls
-// and manages async loading state for the application + status history fetches.
-
-// Application detail page — accessible at /admin/applications/[id].
-// Read-only view of a single application: project details, applicant, grant round,
-// custom form answers, documents, and status-change audit trail.
-// Action buttons open a confirmation modal that PATCHes /applications/{id}/status.
+// Client component: needs localStorage for the JWT and useState for async fetch state.
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -32,7 +26,6 @@ import FormRenderer, { type FormData } from "@/app/components/FormRenderer";
 import type { ApplicationFormSchema } from "@/components/admin/FormSchemaBuilder";
 import { useToast } from "@/contexts/ToastContext";
 
-// One uploaded supporting document attached to the application.
 interface ApplicationDocument {
   id: string;
   file_name: string;
@@ -43,7 +36,6 @@ interface ApplicationDocument {
   uploaded_at: string;
 }
 
-// One row in the status-change audit trail.
 interface StatusHistoryEntry {
   id: string;
   previous_status: string | null;
@@ -53,7 +45,6 @@ interface StatusHistoryEntry {
   changed_at: string;
 }
 
-// One admin-only review note attached to this application.
 interface ReviewNote {
   id: string;
   application_id: string;
@@ -68,8 +59,6 @@ interface ReviewNote {
   };
 }
 
-// Full application shape returned by GET /api/v1/applications/{id}.
-// Includes the relations that the admin detail view needs to render.
 interface ApplicationDetail {
   id: string;
   reference_number: string;
@@ -108,7 +97,6 @@ function getStatusBadge(status: ApplicationDetail["status"]): { className: strin
   }
 }
 
-// Used by the status history timeline to colour the dot for each transition.
 function getStatusDotColour(status: string): string {
   switch (status) {
     case "draft":        return "bg-gray-400";
@@ -120,8 +108,6 @@ function getStatusDotColour(status: string): string {
   }
 }
 
-// Maps a status value (incl. the unknown ones that might appear in older history rows)
-// to a human-readable label.
 function statusLabel(status: string): string {
   switch (status) {
     case "draft":        return "Draft";
@@ -161,16 +147,13 @@ function formatDate(iso: string | null): string {
   });
 }
 
-// Converts file size in bytes to a short human-readable string.
-// e.g. 1024 → "1 KB", 1500000 → "1.4 MB"
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Targets for the admin's status-change buttons. Draft + submitted are not
-// admin-driven transitions — applicants own those — so they're not exposed.
+// Draft + submitted are owned by the applicant flow, so they're not exposed as admin actions.
 type ActionStatus = "under_review" | "approved" | "rejected";
 
 export default function ApplicationDetailPage() {
@@ -183,29 +166,21 @@ export default function ApplicationDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Status-change modal state: which target status is being confirmed,
-  // optional reviewer notes, in-flight + error state for the PATCH request.
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
   const [actionNotes, setActionNotes] = useState("");
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Review notes state. currentUserId is read from localStorage so we can show
-  // edit/delete controls only on the admin's own notes.
   const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Fetches the application detail, status history, and review notes in parallel
-  // on mount and whenever the URL id changes (rare, but covers client-side nav
-  // between siblings). Also reads the signed-in admin's id from localStorage so
-  // ownership-based edit/delete buttons can render correctly on review notes.
+  // Fetches application detail, status history, and review notes on mount and when the URL id changes.
   useEffect(() => {
     async function fetchApplication() {
       setLoading(true);
       setError(null);
 
-      // Pull the admin's id from the stored user payload — used to scope the
-      // edit/delete affordances on review notes to the author of each note.
+      // Need the admin's id to gate edit/delete on review notes to the note's author.
       const rawUser = localStorage.getItem("grantly_user");
       if (rawUser) {
         try {
@@ -260,7 +235,6 @@ export default function ApplicationDetailPage() {
 
   // ─── Review note handlers ──────────────────────────────────────────────
 
-  // Posts a new admin-only review note on this application.
   async function createReviewNote(content: string): Promise<boolean> {
     const token = localStorage.getItem("grantly_token");
     const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -289,7 +263,6 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  // Updates an existing note's content. Server enforces author-only edits.
   async function updateReviewNote(noteId: string, content: string): Promise<boolean> {
     const token = localStorage.getItem("grantly_token");
     const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -318,7 +291,6 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  // Deletes a note. Server enforces author-only deletion.
   async function deleteReviewNote(noteId: string): Promise<void> {
     const token = localStorage.getItem("grantly_token");
     const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -339,8 +311,6 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  // Re-fetches just the status history. Called after a successful status
-  // change to pick up the new audit-log entry without a full page reload.
   async function refreshStatusHistory() {
     const token = localStorage.getItem("grantly_token");
     if (!token) return;
@@ -359,16 +329,12 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  // Closes the status-change modal and resets its transient fields.
   function closeStatusModal() {
     setActionStatus(null);
     setActionNotes("");
     setActionError(null);
   }
 
-  // Sends the PATCH /applications/{id}/status request, then refreshes
-  // the page state so the badge, history timeline, and buttons all reflect
-  // the new status.
   async function submitStatusChange() {
     if (!actionStatus) return;
 
@@ -402,9 +368,7 @@ export default function ApplicationDetailPage() {
         return;
       }
 
-      // The PATCH response loads applicant + grantRound but not documents,
-      // so merge the new fields onto the existing application state to keep
-      // the documents list and any other related data intact.
+      // PATCH response omits documents — merge into existing state so the documents list survives.
       const updated = data.data ?? data;
       setApplication((prev) => (prev ? { ...prev, ...updated, documents: prev.documents } : updated));
       await refreshStatusHistory();
@@ -489,10 +453,7 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
 
-        {/* Status-change buttons — clicking opens a confirmation modal where
-            the admin can add an optional reviewer note before submitting. The
-            button matching the current status is disabled (the API would
-            otherwise return no_status_change). */}
+        {/* The button matching the current status is disabled — the API rejects no-op transitions. */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
@@ -749,9 +710,6 @@ export default function ApplicationDetailPage() {
   );
 }
 
-// Confirmation modal used by the three admin status-change buttons.
-// Shows the current → target transition and exposes an optional notes field
-// that gets recorded on the audit-log entry.
 function StatusChangeModal({
   targetStatus,
   currentStatus,
@@ -773,8 +731,7 @@ function StatusChangeModal({
 }) {
   const targetLabel = statusLabel(targetStatus);
 
-  // Confirm button colour mirrors the trigger button so the action stays
-  // visually consistent from click to confirm.
+  // Confirm button colour mirrors the trigger button it was launched from.
   const confirmClass =
     targetStatus === "approved"
       ? "bg-green-600 hover:bg-green-700 text-white"
@@ -784,7 +741,6 @@ function StatusChangeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Click-outside backdrop — clicking dismisses the modal */}
       <button
         type="button"
         aria-label="Close"
@@ -857,7 +813,6 @@ function StatusChangeModal({
   );
 }
 
-// Card wrapper used by every section on this page. Title bar with optional subtitle.
 function Card({
   title,
   subtitle,
@@ -878,7 +833,6 @@ function Card({
   );
 }
 
-// One labelled value pair used inside the Project Details card.
 function DetailField({
   label,
   value,
@@ -900,7 +854,6 @@ function DetailField({
   );
 }
 
-// Compact icon-label-value row used in the sidebar metadata card.
 function MetaRow({
   icon,
   label,
@@ -921,8 +874,6 @@ function MetaRow({
   );
 }
 
-// Review notes card — composes the new-note form and the existing-notes list.
-// Notes are admin-only; there's no public/internal split.
 function ReviewNotesCard({
   notes,
   currentUserId,
@@ -1005,8 +956,6 @@ function ReviewNotesCard({
   );
 }
 
-// One row in the review-notes list. Toggles between read and edit mode locally;
-// owner-only edit/delete buttons are gated by the `isOwner` prop from the parent.
 function ReviewNoteItem({
   note,
   isOwner,
@@ -1023,7 +972,6 @@ function ReviewNoteItem({
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // Initials for the avatar — same pattern as the Applicant card on this page.
   const initials = (note.reviewer?.full_name ?? "?")
     .split(" ")
     .map((s) => s[0])
@@ -1052,13 +1000,11 @@ function ReviewNoteItem({
   return (
     <li className="px-5 py-4">
       <div className="flex items-start gap-3">
-        {/* Reviewer avatar */}
         <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
           <span className="text-xs font-semibold text-gray-600">{initials}</span>
         </div>
 
         <div className="min-w-0 flex-1">
-          {/* Header row: name, timestamp */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-gray-900 truncate">
               {note.reviewer?.full_name ?? "Unknown reviewer"}

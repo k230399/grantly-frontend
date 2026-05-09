@@ -1,9 +1,5 @@
-// Footer component — rendered at the bottom of every page except /login and /register.
-// Shows the Grantly logo wordmark and a copyright line.
-
 import Image from "next/image";
 
-// Server component: no interactivity needed — purely presentational
 export default function Footer() {
   return (
     <footer className="bg-gray-900 py-6 px-4 sm:px-6 lg:px-8">

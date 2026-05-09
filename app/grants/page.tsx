@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 
-// The shape of a single grant round as returned by GET /api/v1/grant-rounds
 interface GrantRound {
   id: string;
   title: string;
@@ -32,7 +31,6 @@ interface GrantRound {
   geographic_restrictions: string | null;
 }
 
-// Pagination info returned alongside the data array from the API
 interface PaginationMeta {
   current_page: number;
   last_page: number;
@@ -40,8 +38,6 @@ interface PaginationMeta {
   total: number;
 }
 
-// Formats a number as Australian dollars without decimal places.
-// e.g. formatCurrency(50000) → "$50,000"
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
@@ -50,9 +46,6 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-// Formats an ISO date string as a short human-readable date.
-// e.g. "2025-09-30T23:59:59+00:00" → "30 Sep 2025"
-// Returns "—" when the date is null.
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-AU", {
@@ -62,8 +55,6 @@ function formatDate(iso: string | null): string {
   });
 }
 
-// Returns a human-readable string describing how many days remain until a deadline.
-// Returns null if no date is given, or "Applications closed" if the date has passed.
 function daysUntil(iso: string | null): string | null {
   if (!iso) return null;
   const now = new Date();
@@ -75,13 +66,10 @@ function daysUntil(iso: string | null): string | null {
   return `${diff} days left`;
 }
 
-// GrantRoundCard: renders a single grant round as a browsable card in the grid.
-// Used on /grants — one card per open grant round.
 function GrantRoundCard({ round }: { round: GrantRound }) {
-  // How much time is left to apply — used to show urgency styling
   const daysLeft = daysUntil(round.closes_at);
 
-  // true when the deadline is within 7 days — shown in amber to signal urgency
+  // True when ≤7 days remain — drives the amber urgency styling.
   const isUrgent =
     daysLeft !== null &&
     daysLeft !== "Applications closed" &&
@@ -107,15 +95,12 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
           </div>
         )}
 
-        {/* Badges overlaid on the top-left of the card image */}
         <div className="absolute top-3 left-3 flex gap-2">
-          {/* Condition: only show the "Featured" badge if the round is marked featured */}
           {round.is_featured && (
             <span className="rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
               Featured
             </span>
           )}
-          {/* Status badge — only open rounds are shown, but badge communicates it clearly */}
           <span className="rounded-full bg-green-500 px-2.5 py-0.5 text-xs font-semibold text-white">
             Open
           </span>
@@ -125,17 +110,15 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
       {/* ── Card body ───────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 p-5 gap-3">
 
-        {/* Grant title */}
         <h3 className="text-xl font-bold text-gray-900 leading-snug">{round.title}</h3>
 
-        {/* Short description — clamped to 2 lines so cards stay uniform in height */}
+        {/* line-clamp-2 keeps cards uniform in height regardless of description length. */}
         {round.short_description && (
           <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">
             {round.short_description}
           </p>
         )}
 
-        {/* Geographic restriction — shown when the grant is limited to certain areas */}
         {round.geographic_restrictions && (
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
@@ -143,28 +126,24 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
           </div>
         )}
 
-        {/* Spacer pushes the funding/date/tags section to the bottom of the card */}
+        {/* Spacer pushes the funding/date/tags rows to the bottom of the card. */}
         <div className="flex-1" />
 
-        {/* Funding range */}
         <div className="flex items-center gap-1.5 text-sm">
           <DollarSign className="w-4 h-4 text-gray-400 flex-shrink-0" />
           <span className="font-semibold text-gray-900">
-            {/* Condition: show a range if a minimum is set; otherwise just show the max */}
             {round.min_funding_amount
               ? `${formatCurrency(round.min_funding_amount)} – ${formatCurrency(round.max_funding_amount)}`
               : `Up to ${formatCurrency(round.max_funding_amount)}`}
           </span>
         </div>
 
-        {/* Closing date + days remaining */}
         {round.closes_at && (
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 text-gray-400">
               <Clock className="w-3.5 h-3.5 flex-shrink-0" />
               <span>Closes {formatDate(round.closes_at)}</span>
             </div>
-            {/* Condition: amber for urgent (≤7 days) or closing today, gray otherwise */}
             {daysLeft && (
               <span
                 className={`font-medium ${
@@ -177,7 +156,7 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
           </div>
         )}
 
-        {/* Key focus area tags — show up to 3, with "+N more" if there are extras */}
+        {/* Show the first 3 focus-area tags + a "+N more" pill when there are extras. */}
         {round.key_focus_areas && round.key_focus_areas.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {round.key_focus_areas.slice(0, 3).map((area) => (
@@ -188,7 +167,6 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
                 {area}
               </span>
             ))}
-            {/* Only shown when there are more than 3 focus areas */}
             {round.key_focus_areas.length > 3 && (
               <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
                 +{round.key_focus_areas.length - 3} more
@@ -197,7 +175,6 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
           </div>
         )}
 
-        {/* View Details CTA — links to the individual grant detail page at /grants/[id] */}
         <Link
           href={`/grants/${round.id}`}
           className="mt-1 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
@@ -211,28 +188,16 @@ function GrantRoundCard({ round }: { round: GrantRound }) {
   );
 }
 
-// Client component: the public grant rounds browse page at /grants
 export default function GrantsPage() {
-  // The list of open grant rounds returned by the API
   const [rounds, setRounds] = useState<GrantRound[]>([]);
-
-  // Pagination info returned alongside the rounds array
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
-
-  // true while the API request is in flight — shows a spinner in place of the grid
   const [loading, setLoading] = useState(true);
-
-  // An error message if the fetch failed — null means nothing to show
   const [error, setError] = useState<string | null>(null);
 
-  // On mount: fetch the open grant rounds from the public API.
-  // No auth token is needed — this is a public endpoint.
+  // Fetches open grant rounds on mount. No auth — this endpoint is public.
   useEffect(() => {
     async function fetchRounds() {
       try {
-        // GET /api/v1/grant-rounds?status=open — requests only open rounds.
-        // NOTE: the backend must allow unauthenticated requests to this endpoint
-        // for the public browse page to work without a login.
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/grant-rounds?status=open`
         );
@@ -244,8 +209,7 @@ export default function GrantsPage() {
           return;
         }
 
-        // Filter client-side to be safe — only show open, published rounds
-        // (the backend should enforce this too, but this is a second line of defence)
+        // Defensive filter — the backend should already enforce this.
         const openRounds = (data.data as GrantRound[]).filter(
           (r) => r.status === "open" && r.is_published
         );
@@ -255,13 +219,12 @@ export default function GrantsPage() {
       } catch {
         setError("Could not reach the server. Please check your connection.");
       } finally {
-        // Always turn off the loading spinner whether the fetch succeeded or failed
         setLoading(false);
       }
     }
 
     fetchRounds();
-  }, []); // empty array — runs once when the page first loads
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -279,7 +242,6 @@ export default function GrantsPage() {
           <p className="text-gray-600 text-base sm:text-lg leading-relaxed">
             Explore funding opportunities available to your organisation. Select a grant to read the full details and start your application.
           </p>
-          {/* Show the total count once loaded — gives context on how many rounds are available */}
           {meta && !loading && (
             <p className="mt-4 text-gray-400 text-sm">
               {rounds.length} grant {rounds.length === 1 ? "round" : "rounds"} currently open

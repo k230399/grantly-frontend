@@ -1,13 +1,8 @@
 "use client";
-// FormSchemaBuilder needs client-side rendering because it manages local UI state
-// (which question card is expanded, whether the type-picker dropdown is open) and
-// reacts to user clicks/typing. None of this can run on the server.
+// Client component: manages local UI state (expanded card, type-picker open) and reacts to clicks/typing.
 
-// FormSchemaBuilder — admin UI for defining the custom questions applicants will answer.
-// Used on both /admin/grant-rounds/new and /admin/grant-rounds/[id]/edit. The component
-// is "controlled" — the parent owns the schema state and passes it in via `value`,
-// and listens for changes via `onChange`. The schema is what gets saved to the
-// `application_form_schema` JSON column on the grant round.
+// Controlled component — the parent owns the schema via `value`/`onChange`. Output is saved to the
+// `application_form_schema` JSON column. Used on /admin/grant-rounds/new and /admin/grant-rounds/[id]/edit.
 
 import { useState } from "react";
 import {
@@ -26,45 +21,39 @@ import {
   X,
 } from "lucide-react";
 
-// ── Exported schema types ────────────────────────────────────────────────────
-// These are imported by the new + edit pages so they can type their form state.
+// ── Exported schema types — also imported by the new + edit pages ───────────
 
-// One of the six supported question types
 export type FormFieldType =
   | "short_text"     // single-line text input
   | "long_text"      // textarea
-  | "number"         // numeric input
-  | "date"           // date picker
-  | "single_choice"  // radio buttons / dropdown
+  | "number"
+  | "date"
+  | "single_choice"  // radio buttons
   | "multi_choice";  // checkboxes
 
-// One option inside a single_choice or multi_choice question
 export interface FormFieldOption {
-  id: string;     // stable id — used as the key in form_data when this option is selected
-  label: string;  // visible text the applicant sees
+  id: string;     // stable id — used as the value stored in form_data when this option is selected
+  label: string;
 }
 
-// One question in the schema
 export interface FormField {
   id: string;                   // stable id — used as the property name in form_data
-  type: FormFieldType;          // controls which input the applicant sees
-  label: string;                // the question shown above the input
-  help_text?: string;           // optional one-liner shown below the question
-  required: boolean;            // applicant must answer this to submit
-  options?: FormFieldOption[];  // present only on single_choice and multi_choice
-  min?: number;                 // number-only — minimum allowed value (inclusive)
-  max?: number;                 // number-only — maximum allowed value (inclusive)
+  type: FormFieldType;
+  label: string;
+  help_text?: string;
+  required: boolean;
+  options?: FormFieldOption[];  // single_choice and multi_choice only
+  min?: number;                 // number type only
+  max?: number;                 // number type only
 }
 
-// The whole schema saved on grant_rounds.application_form_schema
+// Stored on grant_rounds.application_form_schema as JSON.
 export interface ApplicationFormSchema {
-  version: 1;            // bumped if the schema's shape ever changes
-  fields: FormField[];   // ordered list — the order is the order applicants see
+  version: 1;            // bump if the schema's shape ever changes
+  fields: FormField[];   // order is the order applicants see
 }
 
-// ── Type metadata used by the UI ─────────────────────────────────────────────
-// Maps each type to its display label and icon. Keeping it in one place means the
-// "Add Question" menu and the per-card type badge stay in sync.
+// Single source of truth for the label + icon — keeps the Add Question menu and the per-card badge in sync.
 const TYPE_META: Record<FormFieldType, { label: string; Icon: typeof Type }> = {
   short_text:    { label: "Short text",       Icon: Type },
   long_text:     { label: "Long text",        Icon: AlignLeft },
@@ -74,14 +63,11 @@ const TYPE_META: Record<FormFieldType, { label: string; Icon: typeof Type }> = {
   multi_choice:  { label: "Multiple choice",  Icon: CheckSquare },
 };
 
-// Returns a fresh stable id using the browser's built-in crypto.randomUUID().
-// We use stable ids (rather than array index) so applicant answers in form_data
-// keep mapping to the right question even if the admin reorders or deletes later.
+// Stable ids (not array index) so answers in form_data keep mapping correctly through reorders/deletes.
 function newId(): string {
   return crypto.randomUUID();
 }
 
-// Builds a brand-new field with sensible defaults for the chosen type.
 // Choice types start with two empty options because a single-option question is meaningless.
 function makeField(type: FormFieldType): FormField {
   const base: FormField = {
@@ -99,30 +85,19 @@ function makeField(type: FormFieldType): FormField {
   return base;
 }
 
-// Props the parent passes in to control this component
 interface FormSchemaBuilderProps {
-  value: ApplicationFormSchema | null;                       // current schema (null = no questions yet)
-  onChange: (next: ApplicationFormSchema | null) => void;    // called whenever the schema changes
+  value: ApplicationFormSchema | null;
+  onChange: (next: ApplicationFormSchema | null) => void;
 }
 
-// The main exported component — renders one section card with the question list,
-// reorder/delete controls, and an Add Question dropdown.
 export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilderProps) {
-  // Tracks which question card is currently expanded for editing.
-  // Only one is open at a time so the page doesn't grow indefinitely.
-  // null means every card is collapsed.
+  // Only one card open at a time so the page doesn't grow indefinitely.
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  // true while the "Add Question" type-picker dropdown is showing
   const [isTypeMenuOpen, setIsTypeMenuOpen] = useState(false);
 
-  // The current list of fields. A null/missing schema is treated as no fields,
-  // which keeps the empty-state logic simple.
   const fields = value?.fields ?? [];
 
-  // Helper that wraps the next list of fields into a full schema object and
-  // notifies the parent. If the list ends up empty, we send null so the API
-  // sees nothing rather than an empty-fields object.
+  // Send null when the list is empty so the API sees no schema rather than an empty-fields object.
   function emit(nextFields: FormField[]) {
     if (nextFields.length === 0) {
       onChange(null);
@@ -131,8 +106,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
     }
   }
 
-  // Adds a new question of the given type to the bottom of the list and opens
-  // its editor immediately so the admin can start typing the question label.
+  // Auto-expand the new card so the admin can start typing the label immediately.
   function addField(type: FormFieldType) {
     const field = makeField(type);
     emit([...fields, field]);
@@ -140,20 +114,16 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
     setExpandedId(field.id);
   }
 
-  // Replaces a single field by id with an updated version produced by `updater`.
-  // Using a function lets the caller compute the next state from the previous one.
   function updateFieldById(id: string, updater: (f: FormField) => FormField) {
     emit(fields.map((f) => (f.id === id ? updater(f) : f)));
   }
 
-  // Removes a field by id and closes its editor if it was open
   function removeField(id: string) {
     emit(fields.filter((f) => f.id !== id));
     if (expandedId === id) setExpandedId(null);
   }
 
-  // Swaps a field with its neighbour. direction = -1 moves up, +1 moves down.
-  // Out-of-range moves are no-ops, so the buttons can stay enabled at the ends.
+  // direction = -1 moves up, +1 moves down. Out-of-range moves are no-ops so the end buttons stay enabled.
   function moveField(id: string, direction: -1 | 1) {
     const i = fields.findIndex((f) => f.id === id);
     const j = i + direction;
@@ -164,13 +134,10 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
   }
 
   return (
-    // No `overflow-hidden` here on purpose — the "Add Question" dropdown is absolutely
-    // positioned below the trigger button, and overflow-hidden on this card would clip
-    // the menu when it extends past the card's bottom edge.
+    // No overflow-hidden here on purpose — it would clip the absolutely-positioned Add Question dropdown.
     <div className="bg-white rounded-xl border border-gray-200">
 
-      {/* ── Section header ──────────────────────────────────────────────────
-          Same visual style as the other sections on the new/edit pages. */}
+      {/* ── Section header ────────────────────────────────────────────── */}
       <div className="px-6 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <ListChecks className="w-4 h-4 text-gray-400" />
@@ -182,8 +149,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
       </div>
 
       <div className="p-6">
-        {/* Empty state — only shown when no questions exist yet.
-            The dashed border + muted background mirrors the cover image dropzone. */}
+        {/* Empty state */}
         {fields.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 py-10 px-6 text-center">
             <ListChecks className="w-7 h-7 text-gray-400" />
@@ -193,13 +159,10 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
             </p>
           </div>
         ) : (
-          /* The list of question cards — each card is collapsible.
-             We use <ul>/<li> so screen readers announce this as a list. */
+          /* <ul>/<li> so screen readers announce this as a list of questions. */
           <ul className="space-y-3">
             {fields.map((field, index) => {
-              // Whether this specific card is currently expanded for editing
               const isExpanded = expandedId === field.id;
-              // Look up icon + label for the field's type
               const meta = TYPE_META[field.type];
               const TypeIcon = meta.Icon;
 
@@ -211,35 +174,29 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                   {/* Card header row — always visible */}
                   <div className="flex items-center gap-3 px-4 py-3">
 
-                    {/* Step number — gives the admin a sense of the question's position */}
                     <span className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-xs font-medium text-gray-500 flex-shrink-0">
                       {index + 1}
                     </span>
 
-                    {/* Toggle button — clicking expands/collapses this card.
-                        Stretched to fill the row so most of the card is clickable. */}
+                    {/* Stretched to fill the row so most of the card is clickable. */}
                     <button
                       type="button"
                       onClick={() => setExpandedId(isExpanded ? null : field.id)}
                       className="flex-1 flex items-center gap-2.5 text-left min-w-0"
                     >
-                      {/* Type badge with icon */}
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 border border-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 flex-shrink-0">
                         <TypeIcon className="w-3 h-3" />
                         {meta.label}
                       </span>
 
-                      {/* Question label preview — placeholder italic when blank */}
                       <span className={`text-sm truncate ${field.label ? "text-gray-900 font-medium" : "text-gray-400 italic"}`}>
                         {field.label || "Untitled question"}
                       </span>
 
-                      {/* Required marker — only shown when the toggle is on */}
                       {field.required && (
                         <span className="text-xs text-red-500 flex-shrink-0">required</span>
                       )}
 
-                      {/* Chevron flips between right (collapsed) and down (expanded) */}
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4 text-gray-400 ml-auto flex-shrink-0" />
                       ) : (
@@ -247,7 +204,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                       )}
                     </button>
 
-                    {/* Reorder + delete buttons — small icon row to the right of the toggle */}
+                    {/* Reorder + delete */}
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                       <button
                         type="button"
@@ -278,11 +235,10 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                     </div>
                   </div>
 
-                  {/* Expanded card body — only rendered when this card is open */}
+                  {/* Expanded card body */}
                   {isExpanded && (
                     <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/50 space-y-4">
 
-                      {/* Question label — the text shown above the applicant's input */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">
                           Question <span className="text-red-500">*</span>
@@ -298,7 +254,6 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                         />
                       </div>
 
-                      {/* Help text — optional explanatory text shown below the question */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">
                           Help Text
@@ -308,7 +263,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                           type="text"
                           value={field.help_text ?? ""}
                           onChange={(e) =>
-                            // Empty string maps to undefined so we don't store empty strings in JSON
+                            // Empty string maps to undefined so we don't persist empty strings in JSON.
                             updateFieldById(field.id, (f) => ({ ...f, help_text: e.target.value || undefined }))
                           }
                           placeholder="e.g. Be specific about who will benefit"
@@ -316,7 +271,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                         />
                       </div>
 
-                      {/* Number-only constraints — min and max allowed values */}
+                      {/* Number-only min/max */}
                       {field.type === "number" && (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -326,7 +281,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                               value={field.min ?? ""}
                               onChange={(e) => {
                                 const raw = e.target.value;
-                                // Empty string maps to undefined so we don't save min: NaN
+                                // Empty string → undefined so we never save min: NaN.
                                 updateFieldById(field.id, (f) => ({
                                   ...f,
                                   min: raw === "" ? undefined : Number(raw),
@@ -363,7 +318,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
                         />
                       )}
 
-                      {/* Required toggle — same accessible switch pattern as the existing toggles */}
+                      {/* Required toggle */}
                       <div className="flex items-center justify-between gap-4 pt-1">
                         <div>
                           <p className="text-sm font-medium text-gray-900">Required</p>
@@ -398,9 +353,7 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
           </ul>
         )}
 
-        {/* ── Add Question button + type-picker dropdown ──────────────────────
-            Sits below the empty state or the question list, depending on which
-            one is showing. The dropdown is anchored to this button. */}
+        {/* ── Add Question button + type-picker dropdown ─────────────── */}
         <div className="mt-4 relative">
           <button
             type="button"
@@ -411,12 +364,10 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
             Add Question
           </button>
 
-          {/* Dropdown menu — six question types in a single column.
-              Only rendered when the menu is open so React doesn't keep stale handlers around. */}
+          {/* Only rendered when open so we don't keep stale handlers mounted. */}
           {isTypeMenuOpen && (
             <>
-              {/* Click-outside backdrop — covers the whole viewport so any click closes the menu.
-                  z-10 puts it above the form but below the menu (z-20). */}
+              {/* Click-outside backdrop — z-10 sits above the form, the menu (z-20) sits above the backdrop. */}
               <button
                 type="button"
                 onClick={() => setIsTypeMenuOpen(false)}
@@ -448,26 +399,21 @@ export default function FormSchemaBuilder({ value, onChange }: FormSchemaBuilder
   );
 }
 
-// Sub-component for editing the options on a single_choice or multi_choice question.
-// Kept separate so the main component stays readable.
+// Sub-component for editing options on a single_choice/multi_choice question — kept separate for readability.
 interface OptionsEditorProps {
-  options: FormFieldOption[];                          // current list of options
-  onChange: (next: FormFieldOption[]) => void;         // called with the updated list
+  options: FormFieldOption[];
+  onChange: (next: FormFieldOption[]) => void;
 }
 
 function OptionsEditor({ options, onChange }: OptionsEditorProps) {
-  // Updates the label on a single option, identified by its stable id
   function updateOption(id: string, label: string) {
     onChange(options.map((o) => (o.id === id ? { ...o, label } : o)));
   }
 
-  // Removes an option by id. The remove button is disabled when only one option
-  // remains, so this callback should never produce an empty options array.
   function removeOption(id: string) {
     onChange(options.filter((o) => o.id !== id));
   }
 
-  // Adds a new blank option to the end of the list with a fresh stable id
   function addOption() {
     onChange([...options, { id: crypto.randomUUID(), label: "" }]);
   }
@@ -478,7 +424,6 @@ function OptionsEditor({ options, onChange }: OptionsEditorProps) {
         Options <span className="text-red-500">*</span>
       </label>
 
-      {/* Options list — one row per option with a numbered prefix and remove button */}
       <div className="space-y-2">
         {options.map((option, idx) => (
           <div key={option.id} className="flex items-center gap-2">
@@ -493,8 +438,7 @@ function OptionsEditor({ options, onChange }: OptionsEditorProps) {
             <button
               type="button"
               onClick={() => removeOption(option.id)}
-              // Disabled when only one option remains so we never end up with a choice
-              // question that has nothing to choose from
+              // Keep at least one option so the question always has something to choose from.
               disabled={options.length <= 1}
               className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               aria-label="Remove option"
@@ -505,7 +449,6 @@ function OptionsEditor({ options, onChange }: OptionsEditorProps) {
         ))}
       </div>
 
-      {/* Add option button — separate from the list so it doesn't take an "input slot" */}
       <button
         type="button"
         onClick={addOption}

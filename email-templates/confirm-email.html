@@ -21,22 +21,18 @@
 
   <body style="margin: 0; padding: 0; background-color: #f0f5ff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
 
-    <!-- Outer wrapper — centres the email on wide screens -->
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f5ff; padding: 40px 16px;">
       <tr>
         <td align="center">
 
-          <!-- Email card — max 520px wide, white background -->
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e5e7eb; overflow: hidden;">
 
-            <!-- ── Header band ───────────────────────────────────────────
-                 Blue top strip with the Grantly logo and wordmark.       -->
+            <!-- ── Header band ─────────────────────────────────────────── -->
             <tr>
               <td style="background-color: #2563eb; padding: 28px 40px;">
                 <table cellpadding="0" cellspacing="0" border="0">
                   <tr>
                     <td>
-                      <!-- "G" logo mark — blue square with white letter -->
                       <table cellpadding="0" cellspacing="0" border="0">
                         <tr>
                           <td style="background-color: #fff; width: 36px; height: 36px; border-radius: 8px; text-align: center; vertical-align: middle; padding: 4px;">
@@ -58,17 +54,14 @@
               </td>
             </tr>
 
-            <!-- ── Body ─────────────────────────────────────────────────
-                 Main content: icon, headline, body copy, CTA button.     -->
+            <!-- ── Body ────────────────────────────────────────────────── -->
             <tr>
               <td style="padding: 40px 40px 32px;">
 
-                <!-- Mail icon circle -->
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 28px;">
                   <tr>
                     <td align="center">
                       <div style="width: 64px; height: 64px; background-color: #dbeafe; border-radius: 50%; display: inline-block; text-align: center; line-height: 64px;">
-                        <!-- Envelope SVG icon in blue -->
                         <img
                           src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMyNTYzZWIiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iMjAiIGhlaWdodD0iMTYiIHg9IjIiIHk9IjQiIHJ4PSIyIi8+PHBhdGggZD0ibTIyIDdsLTguOTcgNS4xYTIgMiAwIDAgMS0yLjA2IDBMMiA3Ii8+PC9zdmc+"
                           width="28"
@@ -81,12 +74,10 @@
                   </tr>
                 </table>
 
-                <!-- Headline -->
                 <h1 style="margin: 0 0 12px; font-size: 22px; font-weight: 700; color: #111827; text-align: center; letter-spacing: -0.3px;">
                   Confirm your email address
                 </h1>
 
-                <!-- Body copy -->
                 <p style="margin: 0 0 8px; font-size: 15px; line-height: 1.6; color: #6b7280; text-align: center;">
                   Thanks for signing up for Grantly. Click the button below to verify your email address and activate your account.
                 </p>
@@ -94,7 +85,6 @@
                   This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.
                 </p>
 
-                <!-- CTA button -->
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 32px;">
                   <tr>
                     <td align="center">
@@ -108,7 +98,6 @@
                   </tr>
                 </table>
 
-                <!-- Fallback link -->
                 <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.6;">
                   Button not working? Copy and paste this link into your browser:<br />
                   <a href="{{ .ConfirmationURL }}" style="color: #2563eb; word-break: break-all;">
@@ -119,16 +108,14 @@
               </td>
             </tr>
 
-            <!-- ── Divider ───────────────────────────────────────────────
-                 Thin line separating the body from the footer.           -->
+            <!-- ── Divider ─────────────────────────────────────────────── -->
             <tr>
               <td style="padding: 0 40px;">
                 <div style="border-top: 1px solid #f3f4f6;"></div>
               </td>
             </tr>
 
-            <!-- ── Footer ───────────────────────────────────────────────
-                 Small print: sender identity and unsubscribe note.       -->
+            <!-- ── Footer ──────────────────────────────────────────────── -->
             <tr>
               <td style="padding: 24px 40px 32px;">
                 <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.6;">
@@ -139,7 +126,6 @@
             </tr>
 
           </table>
-          <!-- /email card -->
 
         </td>
       </tr>

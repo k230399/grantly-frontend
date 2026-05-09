@@ -156,9 +156,7 @@ export default function ApplicationsPage() {
     fetchRounds();
   }, []);
 
-  // Initialises Preline on the select once rounds load. Re-initing on the same
-  // node causes a React/DOM ownership conflict, so the select below only mounts
-  // after rounds arrive and this effect fires exactly once.
+  // Initialises Preline on the select once rounds load.
   useEffect(() => {
     if (rounds.length === 0) return;
     import("preline").then(({ HSStaticMethods }) => {

@@ -1,11 +1,5 @@
 "use client";
-// Client rendering: this page reads the JWT from localStorage, fetches the
-// application on mount, and manages controlled form state.
-
-// Applicant application form — /apply/[id]
-// Shown after an applicant clicks "Apply Now" on a grant round (which creates
-// a draft and redirects here) or after they click "Continue Application" on
-// the dashboard. Submitted applications render read-only at the same URL.
+// Client component: needs localStorage for the JWT and useState for controlled form state.
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -57,8 +51,7 @@ interface Application {
   updated_at: string;
 }
 
-// Editable form state — all fields stored as strings so <input> elements behave
-// naturally. We parse to numbers only on save.
+// Numeric fields are stored as strings so <input> behaves naturally; parsed on save.
 interface ApplicationFormState {
   project_name: string;
   project_description: string;
@@ -87,7 +80,6 @@ function formatDate(iso: string | null): string {
   });
 }
 
-// Display label + colour classes for each application status badge
 function statusBadge(status: Application["status"]): { label: string; classes: string } {
   switch (status) {
     case "draft":         return { label: "Draft",          classes: "bg-amber-100 text-amber-800" };
@@ -104,7 +96,6 @@ function statusBadge(status: Application["status"]): { label: string; classes: s
 const DRAFT_NAME_PLACEHOLDER = "Untitled application";
 const DRAFT_DESCRIPTION_PLACEHOLDER = "Draft — please update before submitting.";
 
-// Builds the editable form state from an application loaded from the API
 function hydrateForm(app: Application): ApplicationFormState {
   return {
     project_name: app.project_name === DRAFT_NAME_PLACEHOLDER ? "" : (app.project_name ?? ""),
@@ -133,8 +124,7 @@ export default function ApplyFormPage() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load the application on mount. 403 means the token doesn't own this row;
-  // 404 means the id is wrong. Both fall back to the dashboard.
+  // Loads the application on mount. 403/404 fall through to the error state, which links back to the dashboard.
   useEffect(() => {
     async function load() {
       const token = localStorage.getItem("grantly_token");
@@ -172,7 +162,6 @@ export default function ApplyFormPage() {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
   }
 
-  // Builds the JSON body for PATCH/submit. Numbers parsed; empty values omitted.
   function buildPayload() {
     if (!form) return {};
     return {
@@ -243,8 +232,7 @@ export default function ApplyFormPage() {
     if (!token) { router.replace("/login"); return; }
 
     try {
-      // Save the latest field values first, then call the submit endpoint.
-      // Two requests because PATCH and submit are separate actions on the API.
+      // PATCH and submit are separate API actions, so save the latest values before calling submit.
       const patchRes = await fetch(
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/applications/${id}`,
         {
@@ -358,7 +346,7 @@ export default function ApplyFormPage() {
           </div>
         </div>
 
-        {/* Read-only banner — shown when the application is no longer editable */}
+        {/* Read-only banner */}
         {readOnly && (
           <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
             <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />

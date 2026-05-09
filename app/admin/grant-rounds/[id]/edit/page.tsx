@@ -1,5 +1,5 @@
 "use client";
-// Needs client rendering for localStorage token access, async data fetching, and file uploads.
+// Client component: needs localStorage for the JWT, async fetch state, and the File API for uploads.
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
@@ -56,7 +56,7 @@ interface GrantRound {
   application_form_schema: ApplicationFormSchema | null;
 }
 
-// Number fields stored as strings so <input> elements work naturally; parsed on submit
+// Numeric fields are stored as strings so <input> behaves naturally; parsed on submit.
 interface GrantRoundFormData {
   status: "draft" | "open" | "closed" | "completed";
   title: string;
@@ -85,13 +85,12 @@ interface GrantRoundFormData {
   application_form_schema: ApplicationFormSchema | null;
 }
 
-// Converts an ISO timestamp (e.g. "2025-09-30T23:59:59+00:00") to "YYYY-MM-DD" for <input type="date">
+// Trims an ISO timestamp to "YYYY-MM-DD" so it can be assigned to <input type="date">.
 function isoToDateInput(iso: string | null): string {
   if (!iso) return "";
   return iso.slice(0, 10);
 }
 
-// Maps the API response into the form shape, converting nulls to empty strings/arrays
 function roundToForm(round: GrantRound): GrantRoundFormData {
   return {
     status: round.status,
@@ -132,7 +131,6 @@ function getStatusBadge(status: GrantRound["status"]): { className: string; dotC
   }
 }
 
-// Edit Grant Round form — /admin/grant-rounds/[id]/edit
 export default function EditGrantRoundPage() {
   const router = useRouter();
   const params = useParams();
@@ -151,7 +149,7 @@ export default function EditGrantRoundPage() {
   const [docInput, setDocInput] = useState("");
   const [focusInput, setFocusInput] = useState("");
 
-  // Fetch the existing grant round on mount so we can pre-fill the form
+  // Fetches the existing round on mount and hydrates the form.
   useEffect(() => {
     async function fetchRound() {
       const token = localStorage.getItem("grantly_token");
@@ -173,7 +171,7 @@ export default function EditGrantRoundPage() {
           return;
         }
 
-        // Laravel wraps single resources in a "data" key; handle both shapes
+        // Laravel wraps single resources in `data` — fall through to the raw shape just in case.
         const fetched: GrantRound = data.data ?? data;
         setRound(fetched);
         setForm(roundToForm(fetched));
@@ -188,8 +186,7 @@ export default function EditGrantRoundPage() {
     fetchRound();
   }, [id, router]);
 
-  // Re-initialise Preline after the async fetch — PrelineScript only runs on route changes
-  // and won't pick up elements that appear after a fetch completes.
+  // PrelineScript only runs on route changes, so we re-init after the round loads to wire up new elements.
   useEffect(() => {
     if (!round) return;
     import("preline").then(({ HSStaticMethods }) => HSStaticMethods.autoInit());
@@ -251,9 +248,7 @@ export default function EditGrantRoundPage() {
     updateField("key_focus_areas", form.key_focus_areas.filter((a) => a !== area));
   }
 
-  // Submits changes via PATCH /api/v1/grant-rounds/{id}.
-  // Uses multipart/form-data when a cover image is attached (binary files can't go in JSON),
-  // otherwise sends plain JSON.
+  // Uses multipart/form-data when a cover image is attached (binary can't go in JSON), otherwise plain JSON.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form || !round) return;
@@ -263,7 +258,7 @@ export default function EditGrantRoundPage() {
     const token = localStorage.getItem("grantly_token");
     if (!token) { router.replace("/login"); return; }
 
-    // Only include optional fields that have values
+    // Only spread optional fields that have a value, so the payload doesn't carry empty strings.
     const sharedOptional = {
       ...(form.short_description           && { short_description:           form.short_description }),
       ...(form.eligible_organisation_types && { eligible_organisation_types: form.eligible_organisation_types }),
@@ -309,13 +304,12 @@ export default function EditGrantRoundPage() {
 
       fd.append("cover_image", coverImageFile);
 
-      // JSON.stringify the schema because FormData can't carry nested objects
+      // FormData can't carry nested objects, so stringify; backend's prepareForValidation() decodes it.
       if (form.application_form_schema && form.application_form_schema.fields.length > 0) {
         fd.append("application_form_schema", JSON.stringify(form.application_form_schema));
       }
 
-      // Laravel doesn't parse multipart bodies on PATCH — method spoofing sends it as POST
-      // with _method=PATCH so Laravel routes it correctly while still parsing the file upload
+      // Laravel doesn't parse multipart bodies on PATCH — POST + _method=PATCH spoofs it correctly.
       fd.append("_method", "PATCH");
 
       fetchOptions = {
@@ -341,7 +335,7 @@ export default function EditGrantRoundPage() {
             : null,
       };
 
-      // Sending cover_image_url: "" tells the backend to remove the existing image
+      // cover_image_url: "" is the backend's signal to remove the existing image.
       if (currentCoverImageUrl === null) body.cover_image_url = "";
 
       fetchOptions = {
@@ -402,7 +396,7 @@ export default function EditGrantRoundPage() {
   }
 
   const statusBadge = getStatusBadge(form.status);
-  // Newly selected file takes priority; falls back to the existing URL from the API
+  // Newly selected file takes priority over the existing URL from the API.
   const previewSrc = coverImagePreview ?? currentCoverImageUrl;
 
   return (
@@ -423,8 +417,7 @@ export default function EditGrantRoundPage() {
             <p className="text-sm text-gray-500 mt-1">Edit grant round details.</p>
           </div>
 
-          {/* Status dropdown — Preline JS handles open/close via the hs-dropdown classes.
-              The change is local until "Save Changes" is clicked. */}
+          {/* Status dropdown — Preline handles open/close; the change is local until Save. */}
           <div className="hs-dropdown [--auto-close:inside] relative inline-flex flex-shrink-0 mt-1">
             <button
               id="hs-status-dropdown"
@@ -659,7 +652,6 @@ export default function EditGrantRoundPage() {
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
               </div>
 
-              {/* Tag input — press Enter or + to add, × to remove */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Required Documents

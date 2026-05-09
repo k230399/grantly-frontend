@@ -1,5 +1,5 @@
 "use client";
-// Needs client rendering for form state, localStorage token access, and file uploads.
+// Client component: needs useState for the form, localStorage for the JWT, and the File API for uploads.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -24,8 +24,7 @@ import FormSchemaBuilder, {
 } from "@/components/admin/FormSchemaBuilder";
 import { useToast } from "@/contexts/ToastContext";
 
-// All form fields stored as strings so <input> elements work naturally.
-// Number fields like max_funding_amount are parsed to numbers only on submit.
+// Numeric fields are stored as strings so <input> behaves naturally; parsed on submit.
 interface GrantRoundFormData {
   title: string;
   short_description: string;
@@ -80,7 +79,6 @@ const emptyForm: GrantRoundFormData = {
   application_form_schema: null,
 };
 
-// New Grant Round form — /admin/grant-rounds/new
 export default function NewGrantRoundPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -109,10 +107,9 @@ export default function NewGrantRoundPage() {
       return;
     }
 
-    // Revoke the old blob URL to free browser memory before creating a new one
+    // Revoke the old blob URL before creating a new one to avoid leaking browser memory.
     if (coverImagePreview) URL.revokeObjectURL(coverImagePreview);
     setCoverImageFile(file);
-    // createObjectURL makes a temporary local URL the browser can use as an <img> src
     setCoverImagePreview(URL.createObjectURL(file));
   }
 
@@ -144,9 +141,7 @@ export default function NewGrantRoundPage() {
     updateField("key_focus_areas", form.key_focus_areas.filter((a) => a !== area));
   }
 
-  // Submits the form via POST /api/v1/grant-rounds.
-  // Uses multipart/form-data when a cover image is attached (binary files can't go in JSON),
-  // otherwise sends plain JSON which is simpler and avoids multipart parsing overhead.
+  // Uses multipart/form-data when a cover image is attached (binary can't go in JSON), otherwise plain JSON.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -154,7 +149,7 @@ export default function NewGrantRoundPage() {
     const token = localStorage.getItem("grantly_token");
     if (!token) { router.replace("/login"); return; }
 
-    // Spread only the optional fields that have values — omitting empty ones keeps the payload clean
+    // Only spread optional fields that have a value, so the payload doesn't carry empty strings.
     const sharedOptional = {
       ...(form.short_description           && { short_description:           form.short_description }),
       ...(form.eligible_organisation_types && { eligible_organisation_types: form.eligible_organisation_types }),
@@ -190,7 +185,7 @@ export default function NewGrantRoundPage() {
       fd.append("max_applications_per_user",  form.max_applications_per_user);
 
       Object.entries(sharedOptional).forEach(([key, val]) => {
-        // Arrays need one append per item using the key[] convention Laravel expects
+        // Arrays use Laravel's key[] convention — one append per item.
         if (Array.isArray(val)) {
           (val as string[]).forEach((item) => fd.append(`${key}[]`, item));
         } else {
@@ -200,15 +195,15 @@ export default function NewGrantRoundPage() {
 
       fd.append("cover_image", coverImageFile);
 
-      // JSON.stringify the schema because FormData can't carry nested objects.
-      // The backend's prepareForValidation() decodes it before validation runs.
+      // FormData can't carry nested objects, so stringify; backend's prepareForValidation() decodes it.
       if (form.application_form_schema && form.application_form_schema.fields.length > 0) {
         fd.append("application_form_schema", JSON.stringify(form.application_form_schema));
       }
 
+      // No Content-Type header — the browser sets it with the multipart boundary.
       fetchOptions = {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }, // no Content-Type — browser sets it with the multipart boundary
+        headers: { Authorization: `Bearer ${token}` },
         body: fd,
       };
     } else {
@@ -509,7 +504,6 @@ export default function NewGrantRoundPage() {
               />
             </div>
 
-            {/* Tag input — press Enter or click + to add, × to remove */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Required Documents

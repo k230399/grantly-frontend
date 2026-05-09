@@ -1,25 +1,13 @@
 "use client";
-// FormRenderer needs client rendering because it manages controlled inputs that
-// react to applicant typing/clicking. The applicant's answers are owned by the
-// parent page and passed in via `value`.
-
-// FormRenderer — renders the custom questions an admin defined on a grant round.
-// Used on the applicant-facing /apply/[id] page. The shape of the schema and
-// fields is the same one produced by /components/admin/FormSchemaBuilder, so
-// we import the types from there rather than redefining them.
+// Client component: manages controlled inputs for the applicant's answers.
 
 import type {
   ApplicationFormSchema,
   FormField,
 } from "@/components/admin/FormSchemaBuilder";
 
-// Answers keyed by field.id. We store each field's answer under its stable id so
-// applicant data keeps mapping correctly even if an admin reorders questions.
-// Values:
-//   short_text / long_text / date  → string
-//   number                         → number
-//   single_choice                  → string (the selected option.id)
-//   multi_choice                   → string[] (selected option.ids)
+// Answers are keyed by field.id (not index) so reordering questions doesn't break stored answers.
+// short_text/long_text/date → string · number → number · single_choice → option.id · multi_choice → option.id[]
 export type FormDataValue = string | number | string[] | undefined;
 export type FormData = Record<string, FormDataValue>;
 
@@ -31,8 +19,7 @@ interface FormRendererProps {
 }
 
 export default function FormRenderer({ schema, value, onChange, readOnly = false }: FormRendererProps) {
-  // Updates a single field's answer, identified by its stable id. Empty strings
-  // map to undefined so PATCH payloads don't carry empty answers.
+  // Empty strings map to undefined so PATCH payloads don't carry empty answers.
   function setAnswer(fieldId: string, next: FormDataValue) {
     const cleaned = next === "" ? undefined : next;
     onChange({ ...value, [fieldId]: cleaned });
@@ -84,7 +71,6 @@ function FieldRow({ field, answer, onAnswerChange, readOnly }: FieldRowProps) {
 const inputClass =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
 
-// Renders the editable input for a single field, dispatching on field.type.
 function FieldInput({ field, answer, onAnswerChange }: Omit<FieldRowProps, "readOnly">) {
   switch (field.type) {
     case "short_text":
@@ -188,8 +174,7 @@ function FieldInput({ field, answer, onAnswerChange }: Omit<FieldRowProps, "read
   }
 }
 
-// Renders the answer as plain text for read-only mode (submitted applications).
-// Resolves option ids to their visible labels so the page doesn't show UUIDs.
+// Resolves option ids to their visible labels so the read-only view doesn't show UUIDs.
 function ReadOnlyAnswer({ field, answer }: { field: FormField; answer: FormDataValue }) {
   const empty = <p className="text-sm text-gray-400 italic">No answer provided</p>;
 

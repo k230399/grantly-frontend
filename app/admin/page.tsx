@@ -1,10 +1,5 @@
 "use client";
-// Client component: reads the JWT from localStorage to authenticate API calls
-// and manages loading/error state for the live counts and recent applications table.
-
-// Admin dashboard overview — accessible at /admin
-// High-level snapshot of platform activity: open grant rounds, total applications,
-// pending review queue, and the most recently active applications.
+// Client component: needs localStorage for the JWT and useState for async fetch state.
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -20,8 +15,6 @@ import {
   Loader2,
 } from "lucide-react";
 
-// Shape of one application row used in the Recent Applications table.
-// Only includes the fields the dashboard actually renders.
 interface DashboardApplication {
   id: string;
   funding_requested: number;
@@ -32,16 +25,13 @@ interface DashboardApplication {
   applicant: { id: string; full_name: string; email: string } | null;
 }
 
-// Aggregated counts shown in the four stat cards at the top of the dashboard.
 interface DashboardCounts {
   activeRounds: number;
   totalApplications: number;
   pendingReview: number;   // submitted + under_review
-  approved: number;        // total approved (no date filter — see note in plan)
+  approved: number;        // all-time, not date-filtered
 }
 
-// Returns the Tailwind colour classes and display label for a given application status.
-// Each status gets a distinct colour so reviewers can scan the table at a glance.
 function getStatusBadge(status: DashboardApplication["status"]): {
   className: string;
   label: string;
@@ -55,8 +45,6 @@ function getStatusBadge(status: DashboardApplication["status"]): {
   }
 }
 
-// Formats a number as Australian dollars without decimal places.
-// e.g. formatCurrency(25000) → "$25,000"
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
@@ -65,8 +53,6 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-// Formats an ISO date string as a short human-readable date.
-// e.g. "2025-09-30T23:59:59+00:00" → "30 Sep 2025"
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-AU", {
@@ -77,28 +63,23 @@ function formatDate(iso: string | null): string {
 }
 
 export default function AdminDashboardPage() {
-  // The 5 most recent non-draft applications shown in the table.
   const [applications, setApplications] = useState<DashboardApplication[]>([]);
-
-  // Aggregated totals shown in the stat cards. null while the parallel fetch is in flight.
   const [counts, setCounts] = useState<DashboardCounts | null>(null);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetches the recent applications list and the four stat-card counts in parallel
-  // on first mount. We need the JWT from localStorage so this has to run client-side.
+  // Fetches the recent applications list and stat-card counts in parallel on mount.
   useEffect(() => {
     async function fetchDashboard() {
       const token = localStorage.getItem("grantly_token");
-      if (!token) return; // layout guard handles redirect; bail quietly here
+      // Layout guard handles the redirect — bail quietly here.
+      if (!token) return;
 
       const base = process.env.NEXT_PUBLIC_API_BASE_URL;
       const headers = { Authorization: `Bearer ${token}` };
 
       try {
-        // Five list endpoints in parallel — we only read meta.total from the four count
-        // calls, but it's the cheapest available shape until aggregate endpoints exist.
+        // We hit list endpoints just for meta.total — there's no aggregate count API yet.
         const [recent, openRounds, totalApps, submitted, underReview, approved] =
           await Promise.all([
             fetch(`${base}/api/v1/applications`, { headers }),
@@ -122,9 +103,7 @@ export default function AdminDashboardPage() {
         const underReviewData = await underReview.json();
         const approvedData = await approved.json();
 
-        // The API has no multi-status filter, so we drop drafts client-side
-        // and slice the first 5. The default per_page (15) gives enough buffer
-        // that drafts almost never push the table below 5 rows.
+        // API has no multi-status filter — drop drafts client-side. The default per_page (15) gives enough buffer that drafts rarely push the table below 5.
         const nonDrafts: DashboardApplication[] = (recentData.data ?? [])
           .filter((a: DashboardApplication) => a.status !== "draft")
           .slice(0, 5);
@@ -158,9 +137,7 @@ export default function AdminDashboardPage() {
         </p>
       </div>
 
-      {/* ── Stat cards ────────────────────────────────────────────────
-          Four summary numbers that give the admin a quick pulse on the platform.
-          Each big number falls back to a skeleton bar while the parallel fetch is in flight. */}
+      {/* ── Stat cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
 
         <StatCard
@@ -201,8 +178,7 @@ export default function AdminDashboardPage() {
 
       </div>
 
-      {/* ── Lower content: recent applications table + quick actions ──────
-          Two-column grid on large screens. Table takes 2/3, quick actions 1/3. */}
+      {/* ── Recent applications + Quick actions ─────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* ── Recent Applications table ──────────────────────────────── */}
@@ -339,7 +315,6 @@ export default function AdminDashboardPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-900">Review Applications</p>
                   <p className="text-xs text-gray-500">
-                    {/* Live count of applications waiting on a decision (submitted + under_review). */}
                     {counts
                       ? `${counts.pendingReview} application${counts.pendingReview !== 1 ? "s" : ""} need a decision`
                       : "Loading…"}
@@ -389,8 +364,6 @@ export default function AdminDashboardPage() {
   );
 }
 
-// One stat card. Shows a skeleton bar in place of the number while the
-// parent's parallel fetch is still in flight, then swaps to the live count.
 function StatCard({
   label,
   value,

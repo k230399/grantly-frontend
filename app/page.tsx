@@ -1,7 +1,3 @@
-// Landing page for Grantly — the public entry point at "/"
-// Introduces the platform and routes visitors to the applicant portal (/apply) or admin login (/admin).
-// This is a server component (no "use client") since it has no interactivity or hooks.
-
 import Image from "next/image";
 import {
   ArrowRight,
@@ -14,20 +10,15 @@ import {
 import Footer from "./components/Footer";
 import PublicNav from "./components/PublicNav";
 
-// Server component: renders the full public landing page
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-white">
 
-      {/* ── Navigation bar ────────────────────────────────────────────
-          Shared PublicNav component — logo + sign in + apply CTA.   */}
       <PublicNav />
 
       <main className="flex-1">
 
-        {/* ── Hero section ──────────────────────────────────────────────
-            Full-width introductory section with headline, sub-copy,
-            and the two primary calls-to-action.                       */}
+        {/* ── Hero ────────────────────────────────────────────────────── */}
         <section className="bg-gradient-to-b from-blue-50 to-white py-24 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
 
@@ -35,14 +26,12 @@ export default function Home() {
               <Image src={'/grantly-logo.png'} width={150} height={150} alt="Grantly Logo"></Image>
             </div>
 
-            {/* Small badge above the headline to establish context */}
             <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-1.5 text-sm font-medium text-blue-700 mb-8">
               <span className="font-bold">Grantly:</span> Community Grant Portal
             </div>
 
             <h1 className="text-5xl font-bold tracking-tight text-gray-900 leading-tight mb-6">
               Grant funding,{" "}
-              {/* Accent colour on the key phrase */}
               <span className="text-blue-600">made simple</span>
             </h1>
 
@@ -51,7 +40,6 @@ export default function Home() {
               Browse open rounds, submit applications, and track your progress, all in one place.
             </p>
 
-            {/* Two CTAs: primary action (apply) and secondary (browse) */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
                 href="/register"
@@ -72,9 +60,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── How it works ──────────────────────────────────────────────
-            Three-step process overview for first-time visitors.
-            Helps applicants understand what to expect before signing up. */}
+        {/* ── How it works ────────────────────────────────────────────── */}
         <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
           <div className="max-w-6xl mx-auto">
 
@@ -85,12 +71,10 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Three cards laid out in a row on medium+ screens */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
 
               {/* Step 1: Browse */}
               <div className="flex flex-col items-start p-6 rounded-2xl border border-gray-100 bg-gray-50">
-                {/* Numbered badge shows sequence */}
                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white font-bold text-sm mb-5">
                   1
                 </div>
@@ -132,9 +116,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Features split section ────────────────────────────────────
-            Two cards side-by-side: one for applicants, one for admins.
-            Shows that the platform serves both audiences clearly.     */}
+        {/* ── Features split — applicants vs administrators ───────────── */}
         <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
           <div className="max-w-6xl mx-auto">
 
@@ -151,14 +133,12 @@ export default function Home() {
               {/* Applicant features */}
               <div className="rounded-2xl bg-white border border-gray-200 p-8">
                 <div className="flex items-center gap-3 mb-6">
-                  {/* Icon badge in blue (Preline primary) to match the applicant/brand colour */}
                   <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
                     <Users className="w-5 h-5 text-blue-700" />
                   </div>
                   <h3 className="text-xl font-semibold text-gray-900">For applicants</h3>
                 </div>
 
-                {/* Feature list — each item gets a check icon */}
                 <ul className="space-y-3">
                   {[
                     "Browse all open grant rounds in one place",
@@ -174,7 +154,6 @@ export default function Home() {
                   ))}
                 </ul>
 
-                {/* Link to the applicant surface */}
                 <a
                   href="#"
                   className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800 transition-colors"
@@ -186,7 +165,6 @@ export default function Home() {
               {/* Admin features */}
               <div className="rounded-2xl bg-white border border-gray-200 p-8">
                 <div className="flex items-center gap-3 mb-6">
-                  {/* Icon badge in blue to differentiate the admin audience */}
                   <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
                     <BarChart3 className="w-5 h-5 text-blue-700" />
                   </div>
@@ -208,7 +186,6 @@ export default function Home() {
                   ))}
                 </ul>
 
-                {/* Link to the admin surface */}
                 <a
                   href="/admin"
                   className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800 transition-colors"
@@ -221,9 +198,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Bottom CTA banner ─────────────────────────────────────────
-            Final push encouraging applicants to create an account.
-            Solid blue background (Preline primary) makes it visually distinct.       */}
+        {/* ── Bottom CTA banner ───────────────────────────────────────── */}
         <section className="py-20 px-4 sm:px-6 lg:px-8 bg-blue-600">
           <div className="max-w-3xl mx-auto text-center">
             <h2 className="text-3xl font-bold text-white mb-4">
@@ -232,7 +207,6 @@ export default function Home() {
             <p className="text-blue-100 text-lg mb-8 max-w-xl mx-auto">
               Create a free account, explore open grant rounds, and submit your application today.
             </p>
-            {/* White button on blue background for contrast */}
             <a
               href="/register"
               className="inline-flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-base font-semibold text-blue-700 hover:bg-blue-50 transition-colors shadow-sm"
@@ -245,8 +219,6 @@ export default function Home() {
 
       </main>
 
-      {/* ── Footer ─────────────────────────────────────────────────────
-          Shared Footer component — same across all non-auth pages.    */}
       <Footer />
 
     </div>

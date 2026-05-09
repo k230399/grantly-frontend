@@ -1,9 +1,5 @@
 "use client";
-// "use client" because we use useState and useEffect to manage
-// loading state and the grant round data fetched from the API.
-
-// Public grant round detail page — accessible at /grants/[id].
-// No login required. Shows full details for a single open, published grant round.
+// Client component: needs useState/useEffect for the async fetch and apply flow.
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -29,38 +25,35 @@ import {
 } from "lucide-react";
 import PublicNav from "@/app/components/PublicNav";
 
-// Full shape of a single grant round as returned by GET /api/v1/grant-rounds/{id}
 interface GrantRound {
-  id: string;                              // unique identifier (UUID)
-  title: string;                           // display name of the round
-  short_description: string | null;        // optional one-liner used as a subtitle
-  description: string;                     // full body text describing the round
-  cover_image_url: string | null;          // optional hero image URL
-  eligible_organisation_types: string | null; // e.g. "Non-profits, charities"
-  geographic_restrictions: string | null;  // e.g. "Queensland and NSW only"
-  eligibility_criteria: string;            // who is eligible to apply
-  required_documents: string[] | null;     // list of document names the applicant must upload
-  assessment_criteria: string | null;      // how applications will be judged
-  key_focus_areas: string[] | null;        // topic tags e.g. ["Arts & Culture", "Community"]
-  min_funding_amount: number | null;       // minimum applicants can request (AUD)
-  max_funding_amount: number;              // maximum applicants can request (AUD)
-  total_funding_pool: number | null;       // total budget available across all applicants
-  status: "draft" | "open" | "closed" | "completed"; // current lifecycle stage
-  is_published: boolean;                   // whether applicants can see this round
-  is_featured: boolean;                    // whether it's pinned at the top of the listing
-  allow_multiple_applications: boolean;    // whether one org can submit more than one application
-  max_applications_per_user: number | null; // cap when allow_multiple_applications is true
-  opens_at: string | null;                 // ISO date when applications open
-  closes_at: string | null;               // ISO date when applications close
-  assessment_period_start: string | null;  // ISO date when assessment begins
-  notification_date: string | null;        // ISO date when outcomes are announced
-  funding_release_date: string | null;     // ISO date when funding is paid out
-  contact_email: string | null;            // email address for grant enquiries
-  contact_phone: string | null;            // phone number for grant enquiries
+  id: string;
+  title: string;
+  short_description: string | null;
+  description: string;
+  cover_image_url: string | null;
+  eligible_organisation_types: string | null;
+  geographic_restrictions: string | null;
+  eligibility_criteria: string;
+  required_documents: string[] | null;
+  assessment_criteria: string | null;
+  key_focus_areas: string[] | null;
+  min_funding_amount: number | null;
+  max_funding_amount: number;
+  total_funding_pool: number | null;
+  status: "draft" | "open" | "closed" | "completed";
+  is_published: boolean;
+  is_featured: boolean;
+  allow_multiple_applications: boolean;
+  max_applications_per_user: number | null;
+  opens_at: string | null;
+  closes_at: string | null;
+  assessment_period_start: string | null;
+  notification_date: string | null;
+  funding_release_date: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
 }
 
-// Formats a number as Australian dollars without decimal places.
-// e.g. formatCurrency(50000) → "$50,000"
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
@@ -69,9 +62,6 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-// Formats an ISO date string as a short human-readable date.
-// e.g. "2025-09-30T23:59:59+00:00" → "30 Sep 2025"
-// Returns "Not set" when the date is null.
 function formatDate(iso: string | null): string {
   if (!iso) return "Not set";
   return new Date(iso).toLocaleDateString("en-AU", {
@@ -81,8 +71,6 @@ function formatDate(iso: string | null): string {
   });
 }
 
-// Returns a human-readable string describing how many days remain until the deadline.
-// Returns null if no date is given, or "Applications closed" if the date has passed.
 function daysUntil(iso: string | null): string | null {
   if (!iso) return null;
   const now = new Date();
@@ -94,34 +82,21 @@ function daysUntil(iso: string | null): string | null {
   return `${diff} days remaining`;
 }
 
-// Client component: the public grant round detail page at /grants/[id]
 export default function GrantDetailPage() {
-  // useParams gives us the route segment — [id] maps to the grant round's UUID
   const params = useParams();
   const router = useRouter();
   const { showToast } = useToast();
   const id = params.id as string;
 
-  // true while the Apply button has fired POST /applications and is awaiting a redirect
   const [starting, setStarting] = useState(false);
-
-  // The full grant round data loaded from the API.
-  // null until the fetch completes successfully.
   const [round, setRound] = useState<GrantRound | null>(null);
-
-  // true while the API request is in flight — shows a loading spinner
   const [loading, setLoading] = useState(true);
-
-  // An error message if the fetch failed — null means nothing to display
   const [error, setError] = useState<string | null>(null);
 
-  // Read the user's role synchronously from localStorage as the initial value.
-  // A lazy initializer (the function passed to useState) runs once before the
-  // first render, so isAdmin is already correct when the fetch effect fires.
-  // Without this, isAdmin would start as false, the fetch would run without a
-  // token, and the admin would see a 403 before the state had time to update.
+  // Lazy initializer so isAdmin is correct on the first render — otherwise the
+  // fetch effect would fire without a token and admins would see a 403 on draft rounds.
   const [isAdmin] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false; // guard for server-side rendering
+    if (typeof window === "undefined") return false;
     try {
       const stored = localStorage.getItem("grantly_user");
       if (stored) {
@@ -129,19 +104,14 @@ export default function GrantDetailPage() {
         return user.role === "admin";
       }
     } catch {
-      // localStorage value was malformed — treat as unauthenticated
+      // Malformed session — treat as unauthenticated.
     }
     return false;
   });
 
-  // On mount (and whenever isAdmin or id changes): fetch the grant round details.
-  // Admins send a Bearer token so the backend allows access to draft/unpublished rounds.
-  // Unauthenticated visitors send no token and can only see published, open rounds.
+  // Admins attach a Bearer token so the API serves draft/unpublished rounds; visitors get only published.
   useEffect(() => {
     async function fetchRound() {
-      // Build the request headers.
-      // Admins attach their JWT so the backend recognises them and skips the
-      // is_published / status check it applies to unauthenticated visitors.
       const headers: HeadersInit = { "Content-Type": "application/json" };
       if (isAdmin) {
         const token = localStorage.getItem("grantly_token");
@@ -149,9 +119,6 @@ export default function GrantDetailPage() {
       }
 
       try {
-        // GET /api/v1/grant-rounds/{id}
-        // — admins receive any round regardless of status or published state
-        // — everyone else receives only published rounds (403 otherwise)
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/grant-rounds/${id}`,
           { headers }
@@ -164,29 +131,23 @@ export default function GrantDetailPage() {
           return;
         }
 
-        // The API may wrap the round in a 'data' key or return it directly
         setRound(data.data ?? data);
       } catch {
         setError("Could not reach the server. Please check your connection.");
       } finally {
-        // Always clear the loading state whether the request succeeded or failed
         setLoading(false);
       }
     }
 
     fetchRound();
-  }, [id, isAdmin]); // re-runs if the ID changes or once isAdmin is resolved
+  }, [id, isAdmin]);
 
-  // Click handler for the "Apply Now" CTA. Creates a draft application via the
-  // API and navigates the user into the application form. If the round disallows
-  // duplicates and the applicant already has an application here, we route them
-  // to that existing one instead of showing a dead-end error.
+  // Creates a draft and navigates into the form. If the applicant already has one for this round, route to it.
   async function handleApply() {
     if (starting) return;
     const token = localStorage.getItem("grantly_token");
 
-    // Unauthenticated visitors can browse but not apply — bounce them to /login
-    // and pass the current path so they return here after sign-in.
+    // Visitors must sign in first; ?next= bounces them back here afterwards.
     if (!token) {
       router.push(`/login?next=/grants/${id}`);
       return;
@@ -196,11 +157,8 @@ export default function GrantDetailPage() {
     const base = process.env.NEXT_PUBLIC_API_BASE_URL;
 
     try {
-      // POST a minimal draft. The backend's create validation rejects empty
-      // strings for required text fields, so we send distinctive placeholder
-      // strings that the form clears on hydrate (see DRAFT_NAME_PLACEHOLDER /
-      // DRAFT_DESCRIPTION_PLACEHOLDER in /apply/[id]/page.tsx). The applicant
-      // sees empty inputs and the submit endpoint re-validates completeness.
+      // The backend rejects empty required strings, so we POST distinctive placeholders that
+      // /apply/[id] clears on hydrate (see DRAFT_NAME_PLACEHOLDER / DRAFT_DESCRIPTION_PLACEHOLDER).
       const res = await fetch(`${base}/api/v1/applications`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -220,8 +178,7 @@ export default function GrantDetailPage() {
         return;
       }
 
-      // The applicant already has an application for this round — find and
-      // route to the most recent draft, or surface a friendly message if none.
+      // Duplicate — route to their existing draft (or any application) instead of a dead-end error.
       if (data.error?.code === "duplicate_application") {
         const listRes = await fetch(
           `${base}/api/v1/applications?grant_round_id=${id}`,
@@ -267,7 +224,6 @@ export default function GrantDetailPage() {
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
-          {/* Link back to the browse page so the user isn't stuck */}
           <Link href="/grants" className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to all grants
@@ -275,7 +231,6 @@ export default function GrantDetailPage() {
         </div>
       )}
 
-      {/* Main content — only rendered once the round has loaded */}
       {!loading && !error && round && (
         <>
           {/* Admin preview banner */}
@@ -302,10 +257,9 @@ export default function GrantDetailPage() {
               />
             )}
 
-            {/* Dark gradient overlay ensures text is readable on top of any image */}
+            {/* Dark gradient overlay keeps the title readable over any cover image. */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-            {/* Back link + status/featured badges at the top of the hero */}
             <div className="absolute top-4 left-0 right-0 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex items-center justify-between">
               <Link
                 href="/grants"
@@ -315,9 +269,7 @@ export default function GrantDetailPage() {
                 Back to grants
               </Link>
 
-              {/* Status and featured badges */}
               <div className="flex gap-2">
-                {/* Condition: only show the Featured badge when the round is marked featured */}
                 {round.is_featured && (
                   <span className="rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
                     Featured
@@ -335,7 +287,6 @@ export default function GrantDetailPage() {
               </div>
             </div>
 
-            {/* Grant title and subtitle at the bottom of the hero */}
             <div className="absolute bottom-0 left-0 right-0 px-4 sm:px-6 lg:px-8 pb-6 max-w-7xl mx-auto">
               <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight">
                 {round.title}
@@ -348,25 +299,22 @@ export default function GrantDetailPage() {
             </div>
           </div>
 
-          {/* Page body: main content column + right sidebar */}
+          {/* ── Body: main content + sidebar ───────────────────────── */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1">
             <div className="flex flex-col lg:flex-row gap-8">
 
-              {/* Left column: main content sections */}
               <div className="flex-1 space-y-6">
 
-                {/* About this grant — the full description */}
+                {/* About this grant */}
                 <section className="bg-white rounded-xl border border-gray-200 p-6">
                   <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <Award className="w-5 h-5 text-blue-500" />
                     About this grant
                   </h2>
-                  {/* whitespace-pre-wrap preserves paragraph breaks in the description */}
                   <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                     {round.description}
                   </p>
 
-                  {/* Key focus areas — shown below the description when set */}
                   {round.key_focus_areas && round.key_focus_areas.length > 0 && (
                     <div className="mt-6 pt-5 border-t border-gray-100">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -396,7 +344,6 @@ export default function GrantDetailPage() {
                     {round.eligibility_criteria}
                   </p>
 
-                  {/* Eligible organisation types — shown when specified */}
                   {round.eligible_organisation_types && (
                     <div className="mt-5 pt-5 border-t border-gray-100 flex items-start gap-3">
                       <Users className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
@@ -409,7 +356,6 @@ export default function GrantDetailPage() {
                     </div>
                   )}
 
-                  {/* Geographic restrictions — shown when the grant is location-limited */}
                   {round.geographic_restrictions && (
                     <div className="mt-4 flex items-start gap-3">
                       <MapPin className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
@@ -423,7 +369,6 @@ export default function GrantDetailPage() {
                   )}
                 </section>
 
-                {/* Assessment criteria — only shown when the field is set */}
                 {round.assessment_criteria && (
                   <section className="bg-white rounded-xl border border-gray-200 p-6">
                     <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -436,7 +381,6 @@ export default function GrantDetailPage() {
                   </section>
                 )}
 
-                {/* Required documents — only shown when at least one is specified */}
                 {round.required_documents && round.required_documents.length > 0 && (
                   <section className="bg-white rounded-xl border border-gray-200 p-6">
                     <h2 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
@@ -459,13 +403,12 @@ export default function GrantDetailPage() {
 
               </div>
 
-              {/* Right column: sidebar with key info + Apply CTA */}
+              {/* ── Sidebar ─────────────────────────────────────────── */}
               <div className="lg:w-80 space-y-5">
 
                 {/* Apply CTA card */}
                 <div className="bg-blue-600 rounded-xl p-6 text-white">
 
-                  {/* Days remaining — shown when the round has a closing date */}
                   {round.closes_at && (
                     <div className="flex items-center gap-2 mb-3 text-blue-100 text-sm">
                       <Clock className="w-4 h-4 flex-shrink-0" />
@@ -474,15 +417,12 @@ export default function GrantDetailPage() {
                   )}
 
                   <p className="font-bold text-lg mb-1">Ready to apply?</p>
-                  {/* Condition: tailor the message based on whether the round is still open */}
                   <p className="text-blue-100 text-sm mb-5 leading-relaxed">
                     {round.status === "open"
                       ? "Start your application and submit before the closing date."
                       : "This grant round is no longer accepting applications."}
                   </p>
 
-                  {/* Condition: show Apply Now button when open; disabled state when not.
-                      Clicking creates a draft via the API and navigates into the form. */}
                   {round.status === "open" ? (
                     <button
                       type="button"
@@ -503,7 +443,6 @@ export default function GrantDetailPage() {
                       )}
                     </button>
                   ) : (
-                    // Disabled state — not a link, just a styled div
                     <div className="w-full rounded-xl bg-blue-500/60 px-5 py-3 text-sm font-bold text-blue-200 text-center">
                       Applications Closed
                     </div>
@@ -518,7 +457,6 @@ export default function GrantDetailPage() {
                   </h3>
                   <dl className="space-y-3 text-sm">
 
-                    {/* Funding range or maximum amount */}
                     <div>
                       <dt className="text-xs text-gray-400 mb-0.5">Amount available</dt>
                       <dd className="font-semibold text-gray-900">
@@ -528,7 +466,6 @@ export default function GrantDetailPage() {
                       </dd>
                     </div>
 
-                    {/* Total funding pool — only shown when set */}
                     {round.total_funding_pool && (
                       <div className="pt-3 border-t border-gray-100">
                         <dt className="text-xs text-gray-400 mb-0.5">Total funding pool</dt>
@@ -538,11 +475,9 @@ export default function GrantDetailPage() {
                       </div>
                     )}
 
-                    {/* How many applications an organisation can submit */}
                     <div className="pt-3 border-t border-gray-100">
                       <dt className="text-xs text-gray-400 mb-0.5">Applications per organisation</dt>
                       <dd className="text-gray-700">
-                        {/* Condition: show a cap if multiple applications are allowed */}
                         {round.allow_multiple_applications
                           ? `Up to ${round.max_applications_per_user ?? "unlimited"} application${
                               round.max_applications_per_user !== 1 ? "s" : ""
@@ -560,7 +495,6 @@ export default function GrantDetailPage() {
                     Key Dates
                   </h3>
 
-                  {/* Build a list of timeline items, filtering out any that haven't been set */}
                   <ol className="space-y-3">
                     {[
                       { label: "Applications open",    date: round.opens_at },
@@ -569,7 +503,7 @@ export default function GrantDetailPage() {
                       { label: "Outcome notification", date: round.notification_date },
                       { label: "Funding release",      date: round.funding_release_date },
                     ]
-                      .filter((item) => item.date) // only include dates that are set
+                      .filter((item) => item.date)
                       .map((item) => (
                         <li
                           key={item.label}
@@ -584,7 +518,6 @@ export default function GrantDetailPage() {
                   </ol>
                 </div>
 
-                {/* Contact information — only shown when at least one field is set */}
                 {(round.contact_email || round.contact_phone) && (
                   <div className="bg-white rounded-xl border border-gray-200 p-5">
                     <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -592,7 +525,6 @@ export default function GrantDetailPage() {
                       Contact
                     </h3>
                     <div className="space-y-3">
-                      {/* Email — shown as a mailto link */}
                       {round.contact_email && (
                         <div className="flex items-center gap-2 text-sm">
                           <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -604,7 +536,6 @@ export default function GrantDetailPage() {
                           </a>
                         </div>
                       )}
-                      {/* Phone — shown as a tel link */}
                       {round.contact_phone && (
                         <div className="flex items-center gap-2 text-sm">
                           <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
