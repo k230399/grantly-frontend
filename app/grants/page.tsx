@@ -14,6 +14,7 @@ import {
   MapPin,
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
+import Chatbot from "../components/Chatbot";
 
 interface GrantRound {
   id: string;
@@ -304,6 +305,9 @@ export default function GrantsPage() {
 
       </main>
       <Footer />
+
+      {/* AI grants assistant — only shows for logged-in visitors (component self-hides otherwise) */}
+      <Chatbot contextType="browse" />
 
     </div>
   );

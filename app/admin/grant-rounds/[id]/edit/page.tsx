@@ -25,6 +25,7 @@ import FormSchemaBuilder, {
   type ApplicationFormSchema,
 } from "@/components/admin/FormSchemaBuilder";
 import { useToast } from "@/contexts/ToastContext";
+import Chatbot from "@/app/components/Chatbot";
 
 interface GrantRound {
   id: string;
@@ -880,6 +881,9 @@ export default function EditGrantRoundPage() {
 
         </form>
       </div>
+
+      {/* Round composer assistant — grounded in the saved round so it can react to current values */}
+      {round && <Chatbot contextType="admin_round_compose" grantRoundId={round.id} />}
     </div>
   );
 }

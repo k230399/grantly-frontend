@@ -25,6 +25,7 @@ import {
 import FormRenderer, { type FormData } from "@/app/components/FormRenderer";
 import type { ApplicationFormSchema } from "@/components/admin/FormSchemaBuilder";
 import { useToast } from "@/contexts/ToastContext";
+import Chatbot from "@/app/components/Chatbot";
 
 interface ApplicationDocument {
   id: string;
@@ -706,6 +707,9 @@ export default function ApplicationDetailPage() {
           onConfirm={submitStatusChange}
         />
       )}
+
+      {/* Admin review assistant — grounded in this single application */}
+      <Chatbot contextType="admin_review" applicationId={application.id} />
     </div>
   );
 }

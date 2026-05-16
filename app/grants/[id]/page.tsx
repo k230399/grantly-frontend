@@ -24,6 +24,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import PublicNav from "@/app/components/PublicNav";
+import Chatbot from "@/app/components/Chatbot";
 
 interface GrantRound {
   id: string;
@@ -558,6 +559,9 @@ export default function GrantDetailPage() {
       )}
 
       <Footer />
+
+      {/* AI grants assistant — grounded in this specific round; component self-hides for anonymous visitors */}
+      {round && <Chatbot contextType="browse" grantRoundId={round.id} />}
 
     </div>
   );

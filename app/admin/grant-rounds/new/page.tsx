@@ -23,6 +23,7 @@ import FormSchemaBuilder, {
   type ApplicationFormSchema,
 } from "@/components/admin/FormSchemaBuilder";
 import { useToast } from "@/contexts/ToastContext";
+import Chatbot from "@/app/components/Chatbot";
 
 // Numeric fields are stored as strings so <input> behaves naturally; parsed on submit.
 interface GrantRoundFormData {
@@ -865,6 +866,9 @@ export default function NewGrantRoundPage() {
         </div>
 
       </form>
+
+      {/* Round composer assistant — no round_id yet, so the bot is a blank-slate helper */}
+      <Chatbot contextType="admin_round_compose" />
     </div>
   );
 }

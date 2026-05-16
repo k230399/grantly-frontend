@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
+import Chatbot from "@/app/components/Chatbot";
 
 interface DashboardApplication {
   id: string;
@@ -360,6 +361,9 @@ export default function AdminDashboardPage() {
         </div>
 
       </div>
+
+      {/* Admin overview assistant on the landing page */}
+      <Chatbot contextType="admin_overview" />
     </div>
   );
 }

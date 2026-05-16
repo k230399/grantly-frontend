@@ -5,8 +5,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import Footer from "../components/Footer";
+import ApplicantNav from "../components/ApplicantNav";
+import Chatbot from "../components/Chatbot";
 import {
   FileText,
   ArrowRight,
@@ -221,12 +222,6 @@ export default function DashboardPage() {
     init();
   }, [router]);
 
-  function handleSignOut() {
-    localStorage.removeItem("grantly_token");
-    localStorage.removeItem("grantly_user");
-    router.push("/login");
-  }
-
   // Show spinner while we verify auth and fetch data
   if (!user) {
     return (
@@ -237,48 +232,11 @@ export default function DashboardPage() {
   }
 
   const firstName = user.full_name.split(" ")[0];
-  const avatarInitial = user.full_name.charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
 
-      {/* Top navbar */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Image
-                src="/grantly-logo.png"
-                width={32}
-                height={32}
-                alt="Grantly Logo"
-              />
-            </div>
-            <span className="text-lg font-semibold text-gray-900">Grantly</span>
-          </div>
-
-          {/* User + sign out */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-blue-700 font-semibold text-sm">{avatarInitial}</span>
-              </div>
-              <span className="text-sm font-medium text-gray-700 hidden sm:block">
-                {user.full_name}
-              </span>
-            </div>
-            <button
-              onClick={handleSignOut}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
-
-        </div>
-      </header>
+      <ApplicantNav user={user} />
 
       {/* Main content */}
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 py-10">
@@ -358,6 +316,9 @@ export default function DashboardPage() {
       </main>
 
       <Footer />
+
+      {/* AI dashboard assistant — answers questions about the applicant's own applications */}
+      <Chatbot contextType="dashboard" />
     </div>
   );
 }

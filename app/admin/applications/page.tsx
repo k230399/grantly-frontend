@@ -12,6 +12,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
+import Chatbot from "@/app/components/Chatbot";
 
 interface Application {
   id: string;
@@ -454,6 +455,9 @@ export default function ApplicationsPage() {
         )}
 
       </div>
+
+      {/* Admin overview assistant — aggregates across all applications */}
+      <Chatbot contextType="admin_overview" />
     </div>
   );
 }

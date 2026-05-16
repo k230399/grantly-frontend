@@ -18,6 +18,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import FormRenderer, { type FormData as CustomFormData } from "@/app/components/FormRenderer";
+import Chatbot from "@/app/components/Chatbot";
 import type { ApplicationFormSchema } from "@/components/admin/FormSchemaBuilder";
 import { useToast } from "@/contexts/ToastContext";
 
@@ -534,6 +535,9 @@ export default function ApplyFormPage() {
             </label>
           )}
         </section>
+
+        {/* AI assistant — only available while the application is editable */}
+        {!readOnly && <Chatbot contextType="apply" applicationId={application.id} />}
 
         {/* Action buttons — only when editable */}
         {!readOnly && (
